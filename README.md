@@ -20,7 +20,17 @@
 - **统计面板**：显示原始数量、去重后数量、采集耗时
 - **子域名收集**：DNS 字典爆破 + crt.sh 证书透明度查询
 
-## 安装依赖
+## 快速下载（Windows 安装包）
+
+不需要安装 Python，下载安装包后双击运行即可：
+
+- [InfoScraper-Setup.exe 下载](https://github.com/tomjoy248-crypto/SL-crawler-/blob/main/setup_output/InfoScraper-Setup.exe)
+
+下载后双击安装，安装完成后会在开始菜单和桌面（可选）创建快捷方式。
+
+## 源码运行
+
+### 安装依赖
 
 ```bash
 cd info_scraper

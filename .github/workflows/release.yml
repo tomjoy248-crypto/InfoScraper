@@ -20,8 +20,15 @@ jobs:
       - name: Build Inno Setup wizard
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force setup_output | Out-Null
           choco install innosetup --no-progress -y
           & "${env:ProgramFiles(x86)}\\Inno Setup 6\\ISCC.exe" installer\\setup.iss
+          # Keep the artifact path stable even if Inno Setup ignores OutputDir.
+          $built = Get-ChildItem -Path . -Filter 'InfoScraper-Setup.exe' -File -Recurse | Select-Object -First 1
+          if ($null -eq $built) { throw 'Inno Setup did not produce InfoScraper-Setup.exe' }
+          if ($built.FullName -ne (Join-Path (Resolve-Path setup_output) 'InfoScraper-Setup.exe')) {
+            Copy-Item $built.FullName setup_output\\InfoScraper-Setup.exe -Force
+          }
       - name: Generate SHA256 checksums
         shell: pwsh
         run: |

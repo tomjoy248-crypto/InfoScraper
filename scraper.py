@@ -4,6 +4,8 @@ import random
 import re
 import time
 import urllib.parse
+import ipaddress
+import socket
 from typing import Any, Callable, Dict, List, Optional
 
 import requests
@@ -129,6 +131,7 @@ class WebScraper:
             time.sleep(min(0.2, remaining))
 
     def _fetch(self, url: str, method: str = "GET", payload: Optional[Dict] = None) -> str:
+        self._validate_url(url)
         if self.render:
             return self._fetch_render(url)
         last_error = None
@@ -151,8 +154,22 @@ class WebScraper:
                     self._sleep_interruptibly(random.uniform(1, 3))
         raise ScraperError(f"请求失败（重试 {self.retries} 次）: {last_error}")
 
+    @staticmethod
+    def _validate_url(url: str) -> None:
+        """Reject dangerous schemes and private/link-local destinations."""
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ScraperError("仅支持 http/https URL")
+        try:
+            address = ipaddress.ip_address(socket.gethostbyname(parsed.hostname))
+            if address.is_private or address.is_loopback or address.is_link_local:
+                raise ScraperError("出于安全原因，禁止访问内网或本机地址")
+        except socket.gaierror:
+            pass
+
     def _fetch_api(self, url: str) -> Any:
         """API 模式请求，返回解析后的 JSON。"""
+        self._validate_url(url)
         cfg = self.api_config
         method = (cfg.get("method") or "GET").upper()
         if method not in {"GET", "POST"}:

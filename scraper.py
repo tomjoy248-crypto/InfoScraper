@@ -269,14 +269,14 @@ class WebScraper:
         last_error = None
         for attempt in range(self.retries + 1):
             try:
-            self._playwright_page.goto(url, wait_until="networkidle", timeout=self.timeout * 1000)
-            content = self._playwright_page.content()
-            lowered = content.lower()
-            if any(marker in lowered for marker in ("captcha", "verify you are human", "验证码")):
-                raise ScraperError("检测到验证码页面")
-            if any(marker in lowered for marker in ("login", "sign in", "登录")) and self.cookies:
-                raise ScraperError("可能登录失效，请重新提供 Cookie")
-            return content
+                self._playwright_page.goto(url, wait_until="networkidle", timeout=self.timeout * 1000)
+                content = self._playwright_page.content()
+                lowered = content.lower()
+                if any(marker in lowered for marker in ("captcha", "verify you are human", "验证码")):
+                    raise ScraperError("检测到验证码页面")
+                if any(marker in lowered for marker in ("login", "sign in", "登录")) and self.cookies:
+                    raise ScraperError("可能登录失效，请重新提供 Cookie")
+                return content
             except Exception as exc:
                 last_error = exc
                 self.close()

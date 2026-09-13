@@ -13,6 +13,10 @@ jobs:
         with: {python-version: '3.11'}
       - run: pip install -r requirements.txt pyinstaller
       - run: pyinstaller --noconfirm --clean --onefile --windowed --name InfoScraper main.py
+      - run: copy dist\InfoScraper.exe installer\files\InfoScraper.exe
+      - run: python build_setup.py
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/InfoScraper.exe
+          files: |
+            dist/InfoScraper.exe
+            setup_output/InfoScraper-Setup.exe

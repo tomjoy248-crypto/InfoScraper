@@ -238,8 +238,12 @@ class WebScraper:
                         for k, v in self.cookies.items()
                     ]
                 )
-        self._playwright_page.goto(url, wait_until="networkidle")
-        return self._playwright_page.content()
+        try:
+            self._playwright_page.goto(url, wait_until="networkidle", timeout=self.timeout * 1000)
+            return self._playwright_page.content()
+        except Exception as exc:
+            self.close()
+            raise ScraperError(f"页面渲染失败: {exc}") from exc
 
     def close(self):
         try:

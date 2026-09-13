@@ -47,6 +47,16 @@ def check_proxy(address: str, timeout: float = 5.0) -> bool:
         return False
 
 
+def set_proxy_enabled(address: str, enabled: bool) -> None:
+    """Enable or disable a proxy after health evaluation."""
+    init_db(); conn = _get_conn(); conn.execute("UPDATE proxies SET enabled=? WHERE address=?", (1 if enabled else 0, address)); conn.commit(); conn.close()
+
+
+def mark_proxy_success(address: str) -> None:
+    """Reset failure count after a successful health check."""
+    init_db(); conn = _get_conn(); conn.execute("UPDATE proxies SET fail_count=0, enabled=1 WHERE address=?", (address,)); conn.commit(); conn.close()
+
+
 def save_record(task_name: str, start_url: str, data: List[Dict[str, str]]) -> int:
     init_db()
     conn = _get_conn()

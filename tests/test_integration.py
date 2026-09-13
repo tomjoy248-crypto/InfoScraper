@@ -6,6 +6,7 @@ import threading
 
 from scraper import WebScraper
 from cancellation import CancellationToken
+from redact import redact
 
 
 def test_api_session_request_and_json():
@@ -35,6 +36,11 @@ def test_shared_cancellation_token():
     scraper = WebScraper("https://example.com", cancellation_token=token)
     token.cancel()
     assert scraper._should_stop() is True
+
+
+def test_sensitive_values_are_redacted():
+    value = redact({"cookie": "secret", "authorization": "Bearer abc", "name": "ok"})
+    assert value["cookie"] == "[REDACTED]" and value["authorization"] == "[REDACTED]"
 
 
 def test_real_local_http_fetch():

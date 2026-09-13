@@ -60,6 +60,7 @@ class WebScraper:
         self.render = render
         self.api_config = api_config or {}
         self._cancelled = False
+        self._on_row: Optional[Callable[[Dict[str, str]], None]] = None
         self.session = requests.Session()
         self._update_headers()
         if self.cookies:
@@ -98,6 +99,22 @@ class WebScraper:
     def cancel(self):
         """标记任务取消，当前正在进行的请求不会立即停止，但翻页循环会中断。"""
         self._cancelled = True
+        # Closing the session interrupts requests blocked on network I/O.
+        try:
+            self.session.close()
+        except Exception:
+            pass
+
+    def set_row_callback(self, callback: Optional[Callable[[Dict[str, str]], None]]) -> None:
+        """Set a callback invoked for every parsed row during streaming runs."""
+        self._on_row = callback
+
+    def _emit_rows(self, rows: List[Dict[str, str]], target: List[Dict[str, str]]) -> None:
+        """Emit rows to a consumer while retaining compatibility with list callers."""
+        if self._on_row:
+            for row in rows:
+                self._on_row(row)
+        target.extend(rows)
 
     def _should_stop(self) -> bool:
         return self._cancelled
@@ -386,7 +403,7 @@ class WebScraper:
                 on_log(f"正在采集第 {page} 页: {current_url}")
             html_text = self._fetch(current_url)
             rows = self.parse_fields(html_text, list_selector, fields, selector_type)
-            all_results.extend(rows)
+            self._emit_rows(rows, all_results)
             if on_progress:
                 on_progress(page, len(all_results))
             if page >= max_pages:
@@ -454,7 +471,7 @@ class WebScraper:
                 self.api_config["request_page_value"] = offset_start + (page - 1) * offset_step
             data = self._fetch_api(current_url)
             rows = self.parse_api_items(data, list_selector, fields)
-            all_results.extend(rows)
+            self._emit_rows(rows, all_results)
             if on_progress:
                 on_progress(page, len(all_results))
             if page >= max_pages:

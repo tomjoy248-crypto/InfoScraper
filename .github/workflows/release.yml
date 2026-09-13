@@ -17,8 +17,14 @@ jobs:
       - name: Create installer archive
         shell: pwsh
         run: Compress-Archive -Path dist\\InfoScraper.exe,README.md,USER_GUIDE.md -DestinationPath setup_output\\InfoScraper-Setup.zip
+      - name: Generate SHA256 checksums
+        shell: pwsh
+        run: |
+          Get-FileHash dist\\InfoScraper.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  InfoScraper.exe" } | Out-File setup_output\\SHA256SUMS.txt -Encoding ascii
+          Get-FileHash setup_output\\InfoScraper-Setup.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  InfoScraper-Setup.zip" } | Out-File setup_output\\SHA256SUMS.txt -Append -Encoding ascii
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/InfoScraper.exe
             setup_output/InfoScraper-Setup.zip
+            setup_output/SHA256SUMS.txt

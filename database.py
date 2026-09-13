@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import os
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -34,6 +35,11 @@ def init_db():
         )
     """)
     conn.commit()
+    try:
+        conn.execute("ALTER TABLE proxies ADD COLUMN cooldown_until REAL DEFAULT 0")
+        conn.execute("ALTER TABLE proxies ADD COLUMN latency REAL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
     conn.close()
 
 
@@ -41,7 +47,8 @@ def check_proxy(address: str, timeout: float = 5.0) -> bool:
     """Check proxy reachability with a lightweight HTTPS request."""
     try:
         import requests
-        response = requests.get("https://www.google.com/generate_204", proxies={"http": address, "https": address}, timeout=timeout)
+        started = time.monotonic(); response = requests.get("https://www.google.com/generate_204", proxies={"http": address, "https": address}, timeout=timeout)
+        conn = _get_conn(); conn.execute("UPDATE proxies SET latency=? WHERE address=?", (time.monotonic() - started, address)); conn.commit(); conn.close()
         return response.status_code < 500
     except Exception:
         return False
@@ -49,7 +56,7 @@ def check_proxy(address: str, timeout: float = 5.0) -> bool:
 
 def set_proxy_enabled(address: str, enabled: bool) -> None:
     """Enable or disable a proxy after health evaluation."""
-    init_db(); conn = _get_conn(); conn.execute("UPDATE proxies SET enabled=? WHERE address=?", (1 if enabled else 0, address)); conn.commit(); conn.close()
+    init_db(); conn = _get_conn(); conn.execute("UPDATE proxies SET enabled=?, cooldown_until=? WHERE address=?", (1 if enabled else 0, 0 if enabled else time.time() + 300, address)); conn.commit(); conn.close()
 
 
 def mark_proxy_success(address: str) -> None:
@@ -166,6 +173,8 @@ def add_proxy(address: str):
 def list_proxies() -> List[Dict[str, Any]]:
     init_db()
     conn = _get_conn()
+    conn.execute("UPDATE proxies SET enabled=1, cooldown_until=0 WHERE enabled=0 AND cooldown_until > 0 AND cooldown_until <= ?", (time.time(),))
+    conn.commit()
     cur = conn.execute("SELECT address, enabled, fail_count FROM proxies ORDER BY id DESC")
     rows = [{"address": r[0], "enabled": bool(r[1]), "fail_count": r[2]} for r in cur.fetchall()]
     conn.close()

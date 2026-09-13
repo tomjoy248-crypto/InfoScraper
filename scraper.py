@@ -172,7 +172,11 @@ class WebScraper:
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise ScraperError("仅支持 http/https URL")
         try:
-            address = ipaddress.ip_address(socket.gethostbyname(parsed.hostname))
+            first = socket.gethostbyname(parsed.hostname)
+            second = socket.gethostbyname(parsed.hostname)
+            if first != second:
+                raise ScraperError("DNS 解析结果不稳定，已阻止请求")
+            address = ipaddress.ip_address(first)
             if address.is_private or address.is_loopback or address.is_link_local:
                 raise ScraperError("出于安全原因，禁止访问内网或本机地址")
         except socket.gaierror:

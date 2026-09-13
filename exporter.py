@@ -3,21 +3,22 @@ import os
 from typing import List, Dict
 
 import pandas as pd
+from redact import redact
 
 
 def export_csv(data: List[Dict[str, str]], path: str):
-    df = pd.DataFrame(data)
+    df = pd.DataFrame(redact(data))
     df.to_csv(path, index=False, encoding="utf-8-sig")
 
 
 def export_excel(data: List[Dict[str, str]], path: str):
-    df = pd.DataFrame(data)
+    df = pd.DataFrame(redact(data))
     df.to_excel(path, index=False, engine="openpyxl")
 
 
 def export_json(data: List[Dict[str, str]], path: str):
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+        json.dump(redact(data), f, ensure_ascii=False, indent=2)
 
 
 def export(data: List[Dict[str, str]], path: str):

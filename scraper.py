@@ -392,14 +392,20 @@ class WebScraper:
         on_log: Optional[Callable[[str], None]] = None,
     ) -> List[Dict[str, str]]:
         if self.mode == "api":
-            return self._run_api(
+            result = self._run_api(
                 list_selector=list_selector,
                 fields=fields,
                 max_pages=max_pages,
                 on_progress=on_progress,
                 on_log=on_log,
             )
-        return self._run_static(
+            if self.checkpoint_path and not self._cancelled:
+                try:
+                    os.remove(self.checkpoint_path)
+                except OSError:
+                    pass
+            return result
+        result = self._run_static(
             list_selector=list_selector,
             fields=fields,
             selector_type=selector_type,
@@ -411,6 +417,12 @@ class WebScraper:
             on_progress=on_progress,
             on_log=on_log,
         )
+        if self.checkpoint_path and not self._cancelled:
+            try:
+                os.remove(self.checkpoint_path)
+            except OSError:
+                pass
+        return result
 
     def _run_static(
         self,
@@ -428,7 +440,10 @@ class WebScraper:
         all_results: List[Dict[str, str]] = []
         current_url = self.start_url
         page_param_start = self._guess_page_param_start(current_url, next_page_param)
-        resume_page = int(checkpoint.load(self.checkpoint_path).get("page", 0)) + 1 if self.checkpoint_path else 1
+        state = checkpoint.load(self.checkpoint_path) if self.checkpoint_path else {}
+        resume_page = int(state.get("page", 0)) + 1 if state else 1
+        if state.get("url"):
+            current_url = state["url"]
 
         for page in range(resume_page, max_pages + 1):
             if self._should_stop():
@@ -494,7 +509,10 @@ class WebScraper:
         elif pagination_type == "offset":
             offset_start = self._guess_offset_start(current_url, offset_param)
 
-        resume_page = int(checkpoint.load(self.checkpoint_path).get("page", 0)) + 1 if self.checkpoint_path else 1
+        state = checkpoint.load(self.checkpoint_path) if self.checkpoint_path else {}
+        resume_page = int(state.get("page", 0)) + 1 if state else 1
+        if state.get("url"):
+            current_url = state["url"]
         for page in range(resume_page, max_pages + 1):
             if self._should_stop():
                 if on_log:

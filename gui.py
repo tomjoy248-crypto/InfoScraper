@@ -24,6 +24,7 @@ from database import (
 from scheduler import InAppScheduler
 from picker import pick_selector
 from dedup import deduplicate
+from streaming import process_rows
 from cleaner import apply_clean_rules, CLEAN_RULES
 from templates import get_template, get_template_names
 from subdomain import collect_subdomains
@@ -619,21 +620,13 @@ class ScraperGUI:
             self.raw_data = raw
 
             # 数据处理
-            processed = raw
+            dedup_fields = [f.strip() for f in self.dedup_fields_var.get().split(",") if f.strip()]
+            known = existing_keys(self.task_name_var.get().strip(), dedup_fields) if self.incremental_var.get() and dedup_fields else set()
+            processed = list(process_rows(raw, self.clean_rules, dedup_fields if self.dedup_var.get() else None, known))
             if self.clean_rules:
-                processed = apply_clean_rules(processed, self.clean_rules)
                 self.root.after(0, lambda: self._log(f"已应用清洗规则: {len(self.clean_rules)} 个字段"))
-            if self.dedup_var.get():
-                dedup_fields = [f.strip() for f in self.dedup_fields_var.get().split(",") if f.strip()]
-                processed = deduplicate(processed, dedup_fields if dedup_fields else None)
-                self.root.after(0, lambda: self._log(f"去重完成: {len(raw)} -> {len(processed)}"))
-            if self.incremental_var.get():
-                keys = [f.strip() for f in self.dedup_fields_var.get().split(",") if f.strip()]
-                if keys:
-                    known = existing_keys(self.task_name_var.get().strip(), keys)
-                    before = len(processed)
-                    processed = [r for r in processed if tuple(str(r.get(k, "")).strip() for k in keys) not in known]
-                    self.root.after(0, lambda: self._log(f"增量过滤: {before} -> {len(processed)}"))
+            if self.dedup_var.get() or self.incremental_var.get():
+                self.root.after(0, lambda: self._log(f"逐条处理完成: {len(raw)} -> {len(processed)}"))
 
             self.result_data = processed
             self.root.after(0, self._show_results)

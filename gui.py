@@ -41,7 +41,7 @@ class ScraperGUI:
         self.result_data = []
         self.raw_data = []
         self.scheduler = InAppScheduler()
-        self.scheduler.on_log = self._log
+        self.scheduler.on_log = lambda msg: self.root.after(0, lambda: self._log(msg))
         self.scheduler.start()
         self.start_time = None
 
@@ -882,6 +882,12 @@ class ScraperGUI:
                 if not ok:
                     from database import mark_proxy_fail
                     mark_proxy_fail(address)
+                    if next((p for p in list_proxies() if p["address"] == address), {"fail_count": 0})["fail_count"] >= 3:
+                        from database import set_proxy_enabled
+                        set_proxy_enabled(address, False)
+                else:
+                    from database import mark_proxy_success
+                    mark_proxy_success(address)
                 self.root.after(0, lambda a=address, good=ok: self._log(f"代理 {a}: {'可用' if good else '不可用'}"))
             self.root.after(0, self._refresh_proxies)
         threading.Thread(target=worker, daemon=True).start()

@@ -4,6 +4,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+import re
 from typing import Callable, List, Optional, Set
 
 
@@ -61,6 +62,7 @@ def brute_subdomains(
 ) -> List[dict]:
     """使用字典爆破收集子域名。"""
     words = wordlist or DEFAULT_WORDLIST
+    threads = max(1, min(int(threads), 100))
     found: Set[str] = set()
     results: List[dict] = []
     total = len(words)
@@ -146,6 +148,9 @@ def collect_subdomains(
     on_log: Optional[Callable[[str], None]] = None,
 ) -> List[dict]:
     """综合收集子域名。"""
+    domain = domain.strip().lower().rstrip(".")
+    if not re.fullmatch(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", domain):
+        raise ValueError("域名格式无效，请输入类似 example.com 的根域名")
     all_results: List[dict] = []
     seen: Set[str] = set()
 

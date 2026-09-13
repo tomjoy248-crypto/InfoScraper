@@ -24,7 +24,7 @@
 
 不需要安装 Python，下载安装包后双击运行即可：
 
-- [InfoScraper-Setup.exe 下载](https://github.com/tomjoy248-crypto/SL-crawler-/blob/main/setup_output/InfoScraper-Setup.exe)
+- [InfoScraper-Setup.exe 下载](https://github.com/tomjoy248-crypto/SL-crawler-/releases/download/v1.1.0/InfoScraper-Setup.exe)
 
 下载后双击安装，安装完成后会在开始菜单和桌面（可选）创建快捷方式。
 

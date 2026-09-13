@@ -4,12 +4,38 @@ __pycache__/
 *$py.class
 *.so
 .Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Virtual environments
-venv/
-env/
-ENV/
-.venv/
+# PyInstaller
+*.spec
+
+# 打包输出
+setup_output/
+installer/files/InfoScraper.exe
+
+# 测试
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 数据库和任务
+tasks/
+*.db
+*.sqlite
 
 # IDE
 .vscode/
@@ -20,12 +46,3 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
-
-# Build artifacts (keep dist exe, ignore intermediate build files)
-build/
-*.spec
-
-# Local data
-*.db
-*.sqlite
-*.sqlite3

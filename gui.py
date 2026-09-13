@@ -136,12 +136,66 @@ class ScraperGUI:
         tk.Label(basic, text="Cookie (可选):").grid(row=4, column=0, sticky=tk.W, padx=5, pady=2)
         self.cookie_var = tk.StringVar()
         tk.Entry(basic, textvariable=self.cookie_var).grid(row=4, column=1, sticky=tk.EW, padx=5, pady=2)
+        self.save_cookie_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(basic, text="保存 Cookie（加密）", variable=self.save_cookie_var).grid(row=4, column=2, sticky=tk.W, padx=5, pady=2)
 
         tk.Label(basic, text="User-Agent:").grid(row=5, column=0, sticky=tk.W, padx=5, pady=2)
         self.ua_var = tk.StringVar(value="Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
         tk.Entry(basic, textvariable=self.ua_var).grid(row=5, column=1, sticky=tk.EW, padx=5, pady=2)
 
         basic.columnconfigure(1, weight=1)
+
+        # ===== API 配置（仅 API 模式使用） =====
+        api_frame = tk.LabelFrame(parent, text="API 配置")
+        api_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        tk.Label(api_frame, text="请求方法:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
+        self.api_method_var = tk.StringVar(value="GET")
+        ttk.Combobox(api_frame, textvariable=self.api_method_var, values=["GET", "POST"], state="readonly", width=10).grid(row=0, column=1, sticky=tk.W, padx=5, pady=2)
+
+        tk.Label(api_frame, text="请求体类型:").grid(row=0, column=2, sticky=tk.W, padx=5, pady=2)
+        self.api_body_type_var = tk.StringVar(value="json")
+        ttk.Combobox(api_frame, textvariable=self.api_body_type_var, values=["json", "form"], state="readonly", width=10).grid(row=0, column=3, sticky=tk.W, padx=5, pady=2)
+
+        tk.Label(api_frame, text="额外请求头 (JSON):").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
+        self.api_headers_var = tk.StringVar()
+        tk.Entry(api_frame, textvariable=self.api_headers_var).grid(row=1, column=1, columnspan=3, sticky=tk.EW, padx=5, pady=2)
+
+        tk.Label(api_frame, text="请求体 (JSON):").grid(row=2, column=0, sticky=tk.W, padx=5, pady=2)
+        self.api_body_var = tk.StringVar()
+        tk.Entry(api_frame, textvariable=self.api_body_var).grid(row=2, column=1, columnspan=3, sticky=tk.EW, padx=5, pady=2)
+
+        tk.Label(api_frame, text="API 分页方式:").grid(row=3, column=0, sticky=tk.W, padx=5, pady=2)
+        self.api_pagination_var = tk.StringVar(value="none")
+        ttk.Combobox(api_frame, textvariable=self.api_pagination_var, values=["none", "param", "offset"], state="readonly", width=12).grid(row=3, column=1, sticky=tk.W, padx=5, pady=2)
+
+        tk.Label(api_frame, text="分页参数名:").grid(row=3, column=2, sticky=tk.W, padx=5, pady=2)
+        self.api_page_param_var = tk.StringVar(value="page")
+        tk.Entry(api_frame, textvariable=self.api_page_param_var, width=10).grid(row=3, column=3, sticky=tk.W, padx=5, pady=2)
+
+        tk.Label(api_frame, text="分页步长:").grid(row=4, column=0, sticky=tk.W, padx=5, pady=2)
+        self.api_page_step_var = tk.IntVar(value=1)
+        tk.Spinbox(api_frame, from_=1, to=1000, textvariable=self.api_page_step_var, width=8).grid(row=4, column=1, sticky=tk.W, padx=5, pady=2)
+
+        tk.Label(api_frame, text="Offset 参数名:").grid(row=4, column=2, sticky=tk.W, padx=5, pady=2)
+        self.api_offset_param_var = tk.StringVar(value="offset")
+        tk.Entry(api_frame, textvariable=self.api_offset_param_var, width=10).grid(row=4, column=3, sticky=tk.W, padx=5, pady=2)
+
+        tk.Label(api_frame, text="Offset 步长:").grid(row=5, column=0, sticky=tk.W, padx=5, pady=2)
+        self.api_offset_step_var = tk.IntVar(value=20)
+        tk.Spinbox(api_frame, from_=1, to=10000, textvariable=self.api_offset_step_var, width=8).grid(row=5, column=1, sticky=tk.W, padx=5, pady=2)
+
+        tk.Label(api_frame, text="下一页 URL JSONPath:").grid(row=6, column=0, sticky=tk.W, padx=5, pady=2)
+        self.api_next_url_path_var = tk.StringVar()
+        tk.Entry(api_frame, textvariable=self.api_next_url_path_var).grid(row=6, column=1, columnspan=3, sticky=tk.EW, padx=5, pady=2)
+        tk.Label(api_frame, text="游标 JSONPath / 参数:").grid(row=7, column=0, sticky=tk.W, padx=5, pady=2)
+        self.api_cursor_path_var = tk.StringVar()
+        tk.Entry(api_frame, textvariable=self.api_cursor_path_var, width=20).grid(row=7, column=1, sticky=tk.EW, padx=5, pady=2)
+        self.api_cursor_param_var = tk.StringVar(value="cursor")
+        tk.Entry(api_frame, textvariable=self.api_cursor_param_var, width=12).grid(row=7, column=3, sticky=tk.W, padx=5, pady=2)
+
+        api_frame.columnconfigure(1, weight=1)
+        api_frame.columnconfigure(3, weight=1)
 
         paging = tk.LabelFrame(parent, text="翻页配置")
         paging.pack(fill=tk.X, padx=5, pady=5)
@@ -171,19 +225,23 @@ class ScraperGUI:
         input_f.pack(fill=tk.X, padx=5, pady=2)
         tk.Label(input_f, text="字段名:").pack(side=tk.LEFT)
         self.field_name_var = tk.StringVar()
-        tk.Entry(input_f, textvariable=self.field_name_var, width=15).pack(side=tk.LEFT, padx=2)
+        tk.Entry(input_f, textvariable=self.field_name_var, width=12).pack(side=tk.LEFT, padx=2)
         tk.Label(input_f, text="选择器:").pack(side=tk.LEFT)
         self.field_selector_var = tk.StringVar()
-        tk.Entry(input_f, textvariable=self.field_selector_var, width=25).pack(side=tk.LEFT, padx=2)
+        tk.Entry(input_f, textvariable=self.field_selector_var, width=20).pack(side=tk.LEFT, padx=2)
         tk.Label(input_f, text="属性:").pack(side=tk.LEFT)
         self.field_attr_var = tk.StringVar()
-        tk.Entry(input_f, textvariable=self.field_attr_var, width=10).pack(side=tk.LEFT, padx=2)
+        tk.Entry(input_f, textvariable=self.field_attr_var, width=8).pack(side=tk.LEFT, padx=2)
+        tk.Label(input_f, text="JSONPath:").pack(side=tk.LEFT)
+        self.field_json_path_var = tk.StringVar()
+        tk.Entry(input_f, textvariable=self.field_json_path_var, width=15).pack(side=tk.LEFT, padx=2)
         ttk.Button(input_f, text="添加字段", command=self._add_field).pack(side=tk.LEFT, padx=5)
 
-        self.field_tree = ttk.Treeview(field_frame, columns=("name", "selector", "attr"), show="headings", height=5)
+        self.field_tree = ttk.Treeview(field_frame, columns=("name", "selector", "attr", "json_path"), show="headings", height=5)
         self.field_tree.heading("name", text="字段名")
-        self.field_tree.heading("selector", text="选择器")
+        self.field_tree.heading("selector", text="选择器/CSS/XPath")
         self.field_tree.heading("attr", text="属性")
+        self.field_tree.heading("json_path", text="JSONPath")
         self.field_tree.pack(fill=tk.X, padx=5, pady=2)
         ttk.Button(field_frame, text="删除选中字段", command=self._del_field).pack(pady=2)
 
@@ -414,18 +472,24 @@ class ScraperGUI:
     def _add_field(self):
         name = self.field_name_var.get().strip()
         selector = self.field_selector_var.get().strip()
-        if not name or not selector:
-            messagebox.showwarning("提示", "字段名和选择器不能为空")
+        json_path = self.field_json_path_var.get().strip()
+        if not name:
+            messagebox.showwarning("提示", "字段名不能为空")
+            return
+        if not selector and not json_path:
+            messagebox.showwarning("提示", "选择器和 JSONPath 至少填一个")
             return
         self.fields.append({
             "name": name,
             "selector": selector,
             "attr": self.field_attr_var.get().strip() or None,
+            "json_path": json_path or None,
         })
-        self.field_tree.insert("", tk.END, values=(name, selector, self.field_attr_var.get().strip()))
+        self.field_tree.insert("", tk.END, values=(name, selector, self.field_attr_var.get().strip(), json_path))
         self.field_name_var.set("")
         self.field_selector_var.set("")
         self.field_attr_var.set("")
+        self.field_json_path_var.set("")
 
     def _del_field(self):
         selected = self.field_tree.selection()
@@ -517,6 +581,7 @@ class ScraperGUI:
     def _scrape_worker(self):
         try:
             proxies = [p["address"] for p in list_proxies() if p["enabled"]]
+            task = self._collect_task_config()
             scraper = WebScraper(
                 start_url=self.url_var.get().strip(),
                 mode=self.mode_var.get(),
@@ -528,6 +593,7 @@ class ScraperGUI:
                 random_ua=self.random_ua_var.get(),
                 retries=self.retries_var.get(),
                 render=self.render_var.get(),
+                api_config=task.get("api_config"),
             )
             raw = scraper.run(
                 list_selector=self.list_selector_var.get().strip(),
@@ -616,7 +682,11 @@ class ScraperGUI:
             messagebox.showwarning("提示", "请输入任务名")
             return
         task = self._collect_task_config()
-        save_task(name, task)
+        try:
+            save_task(name, task)
+        except Exception as exc:
+            messagebox.showerror("错误", f"任务保存失败: {exc}")
+            return
         messagebox.showinfo("完成", f"任务 '{name}' 已保存")
 
     def _load_task(self):
@@ -629,16 +699,35 @@ class ScraperGUI:
         except FileNotFoundError:
             messagebox.showerror("错误", f"未找到任务: {name}")
             return
+        except Exception as exc:
+            messagebox.showerror("错误", f"任务加载失败: {exc}")
+            return
         self._apply_task_config(task)
         self._log(f"已加载任务: {name}")
 
     def _collect_task_config(self) -> dict:
+        api_headers = {}
+        api_body = {}
+        try:
+            h = self.api_headers_var.get().strip()
+            if h:
+                api_headers = json.loads(h)
+        except Exception:
+            self._log("API 额外请求头不是合法 JSON，已忽略")
+        try:
+            b = self.api_body_var.get().strip()
+            if b:
+                api_body = json.loads(b)
+        except Exception:
+            self._log("API 请求体不是合法 JSON，已忽略")
+
         return {
             "url": self.url_var.get(),
             "mode": self.mode_var.get(),
             "selector_type": self.selector_type_var.get(),
             "list_selector": self.list_selector_var.get(),
             "cookie": self.cookie_var.get(),
+            "save_cookie": self.save_cookie_var.get(),
             "ua": self.ua_var.get(),
             "max_pages": self.max_pages_var.get(),
             "page_mode": self.page_mode_var.get(),
@@ -653,6 +742,21 @@ class ScraperGUI:
             "dedup": self.dedup_var.get(),
             "dedup_fields": self.dedup_fields_var.get(),
             "clean_rules": self.clean_rules,
+            "api_config": {
+                "method": self.api_method_var.get(),
+                "body_type": self.api_body_type_var.get(),
+                "headers": api_headers,
+                "body": api_body,
+                "pagination_type": self.api_pagination_var.get(),
+                "pagination_param": self.api_page_param_var.get(),
+                "pagination_step": self.api_page_step_var.get(),
+                "request_page_param": self.api_page_param_var.get(),
+                "offset_param": self.api_offset_param_var.get(),
+                "offset_step": self.api_offset_step_var.get(),
+                "next_url_path": self.api_next_url_path_var.get().strip(),
+                "cursor_path": self.api_cursor_path_var.get().strip(),
+                "cursor_param": self.api_cursor_param_var.get().strip() or "cursor",
+            },
         }
 
     def _apply_task_config(self, task: dict):
@@ -661,6 +765,7 @@ class ScraperGUI:
         self.selector_type_var.set(task.get("selector_type", "css"))
         self.list_selector_var.set(task.get("list_selector", ""))
         self.cookie_var.set(task.get("cookie", ""))
+        self.save_cookie_var.set(bool(task.get("save_cookie", False)))
         self.ua_var.set(task.get("ua", ""))
         self.max_pages_var.set(task.get("max_pages", 1))
         self.page_mode_var.set(task.get("page_mode", "none"))
@@ -669,7 +774,9 @@ class ScraperGUI:
         self.fields = task.get("fields", [])
         self.field_tree.delete(*self.field_tree.get_children())
         for f in self.fields:
-            self.field_tree.insert("", tk.END, values=(f["name"], f["selector"], f.get("attr", "")))
+            self.field_tree.insert("", tk.END, values=(
+                f["name"], f.get("selector", ""), f.get("attr", ""), f.get("json_path", "")
+            ))
         self.random_ua_var.set(task.get("random_ua", False))
         self.render_var.set(task.get("render", False))
         self.retries_var.set(task.get("retries", 2))
@@ -682,6 +789,26 @@ class ScraperGUI:
         for field, rules in self.clean_rules.items():
             for rule in rules:
                 self.clean_tree.insert("", tk.END, values=(field, rule))
+
+        api_cfg = task.get("api_config", {})
+        self.api_method_var.set(api_cfg.get("method", "GET"))
+        self.api_body_type_var.set(api_cfg.get("body_type", "json"))
+        try:
+            self.api_headers_var.set(json.dumps(api_cfg.get("headers", {}), ensure_ascii=False) if api_cfg.get("headers") else "")
+        except Exception:
+            self.api_headers_var.set("")
+        try:
+            self.api_body_var.set(json.dumps(api_cfg.get("body", {}), ensure_ascii=False) if api_cfg.get("body") else "")
+        except Exception:
+            self.api_body_var.set("")
+        self.api_pagination_var.set(api_cfg.get("pagination_type", "none"))
+        self.api_page_param_var.set(api_cfg.get("pagination_param", "page"))
+        self.api_page_step_var.set(api_cfg.get("pagination_step", 1))
+        self.api_offset_param_var.set(api_cfg.get("offset_param", "offset"))
+        self.api_offset_step_var.set(api_cfg.get("offset_step", 20))
+        self.api_next_url_path_var.set(api_cfg.get("next_url_path", ""))
+        self.api_cursor_path_var.set(api_cfg.get("cursor_path", ""))
+        self.api_cursor_param_var.set(api_cfg.get("cursor_param", "cursor"))
 
     def _show_task_list(self):
         names = list_tasks()
@@ -757,6 +884,7 @@ class ScraperGUI:
                 random_ua=task.get("random_ua", False),
                 retries=task.get("retries", 2),
                 render=task.get("render", False),
+                api_config=task.get("api_config"),
             )
             data = scraper.run(
                 list_selector=task["list_selector"],

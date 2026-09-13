@@ -68,6 +68,7 @@ class WebScraper:
         self.api_config = api_config or {}
         self.checkpoint_path = checkpoint_path
         self.cancellation_token = cancellation_token or CancellationToken()
+        self._resolved_hosts: Dict[str, str] = {}
         if self.checkpoint_path:
             os.makedirs(os.path.dirname(self.checkpoint_path) or ".", exist_ok=True)
         self._cancelled = False
@@ -165,8 +166,7 @@ class WebScraper:
                     self._sleep_interruptibly(random.uniform(1, 3))
         raise ScraperError(f"请求失败（重试 {self.retries} 次）: {last_error}")
 
-    @staticmethod
-    def _validate_url(url: str) -> None:
+    def _validate_url(self, url: str) -> None:
         """Reject dangerous schemes and private/link-local destinations."""
         parsed = urllib.parse.urlparse(url)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
@@ -176,6 +176,10 @@ class WebScraper:
             second = socket.gethostbyname(parsed.hostname)
             if first != second:
                 raise ScraperError("DNS 解析结果不稳定，已阻止请求")
+            locked = self._resolved_hosts.get(parsed.hostname)
+            if locked and locked != first:
+                raise ScraperError("目标地址发生变化，已阻止可能的 DNS 重绑定")
+            self._resolved_hosts[parsed.hostname] = first
             address = ipaddress.ip_address(first)
             if address.is_private or address.is_loopback or address.is_link_local:
                 raise ScraperError("出于安全原因，禁止访问内网或本机地址")
@@ -441,8 +445,6 @@ class WebScraper:
 
     def iter_run(self, list_selector: str, fields: List[Dict[str, Any]], **kwargs):
         """Yield parsed rows incrementally while preserving ``run`` compatibility."""
-        # The page parser remains reusable; callers can consume rows without
-        # retaining the final result list returned by ``run``.
         for row in self.run(list_selector, fields, **kwargs):
             yield row
 

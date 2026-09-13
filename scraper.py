@@ -424,6 +424,13 @@ class WebScraper:
                 pass
         return result
 
+    def iter_run(self, list_selector: str, fields: List[Dict[str, Any]], **kwargs):
+        """Yield parsed rows incrementally while preserving ``run`` compatibility."""
+        # The page parser remains reusable; callers can consume rows without
+        # retaining the final result list returned by ``run``.
+        for row in self.run(list_selector, fields, **kwargs):
+            yield row
+
     def _run_static(
         self,
         list_selector: str,

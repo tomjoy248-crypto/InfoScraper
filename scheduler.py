@@ -1,5 +1,7 @@
 import threading
 import time
+import json
+import os
 from datetime import datetime, timedelta
 from typing import Callable, Dict, List, Optional
 
@@ -17,12 +19,39 @@ class Job:
 class InAppScheduler:
     """应用内定时调度器，支持分钟级间隔调度。"""
 
-    def __init__(self):
+    def __init__(self, storage_path: Optional[str] = None):
         self.jobs: Dict[str, Job] = {}
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
         self._running = False
         self.on_log: Optional[Callable[[str], None]] = None
+        self.storage_path = storage_path or os.path.join(os.path.dirname(os.path.abspath(__file__)), "scheduler_jobs.json")
+
+    def _persist(self):
+        """Persist schedules without serializing callback objects."""
+        payload = [{"id": j.job_id, "task": j.task, "interval": j.interval_minutes,
+                    "next_run": j.next_run.isoformat(), "enabled": j.enabled}
+                   for j in self.jobs.values()]
+        temp = self.storage_path + ".tmp"
+        with open(temp, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+        os.replace(temp, self.storage_path)
+
+    def load_jobs(self, callback_factory: Callable[[Dict], Callable]) -> int:
+        """Load persisted jobs and create callbacks through ``callback_factory``."""
+        if not os.path.exists(self.storage_path):
+            return 0
+        try:
+            with open(self.storage_path, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+            for item in payload:
+                if int(item.get("interval", 0)) < 1:
+                    continue
+                self.add_job(item["id"], item["task"], int(item["interval"]), callback_factory(item["task"]))
+            return len(self.jobs)
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            self._log(f"定时任务加载失败: {exc}")
+            return 0
 
     def start(self):
         if self._running:
@@ -39,6 +68,7 @@ class InAppScheduler:
             return False
         with self._lock:
             self.jobs[job_id] = Job(job_id, task, interval_minutes, callback)
+            self._persist()
         self._log(f"添加定时任务 '{job_id}'，每 {interval_minutes} 分钟执行一次")
         return True
 
@@ -46,6 +76,7 @@ class InAppScheduler:
         with self._lock:
             if job_id in self.jobs:
                 del self.jobs[job_id]
+                self._persist()
         self._log(f"删除定时任务 '{job_id}'")
 
     def list_jobs(self) -> List[Dict]:

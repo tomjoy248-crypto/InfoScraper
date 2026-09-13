@@ -17,6 +17,11 @@ jobs:
       - name: Create installer archive
         shell: pwsh
         run: Compress-Archive -Path dist\\InfoScraper.exe,README.md,USER_GUIDE.md -DestinationPath setup_output\\InfoScraper-Setup.zip
+      - name: Build Inno Setup wizard
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          & "${env:ProgramFiles(x86)}\\Inno Setup 6\\ISCC.exe" installer\\setup.iss
       - name: Generate SHA256 checksums
         shell: pwsh
         run: |
@@ -27,4 +32,5 @@ jobs:
           files: |
             dist/InfoScraper.exe
             setup_output/InfoScraper-Setup.zip
+            setup_output/InfoScraper-Setup.exe
             setup_output/SHA256SUMS.txt

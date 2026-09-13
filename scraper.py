@@ -1,4 +1,5 @@
 import json
+import os
 import copy
 import random
 import re
@@ -6,6 +7,7 @@ import time
 import urllib.parse
 import ipaddress
 import socket
+import checkpoint
 from typing import Any, Callable, Dict, List, Optional
 
 import requests
@@ -47,6 +49,7 @@ class WebScraper:
         retries: int = 2,
         render: bool = False,
         api_config: Optional[Dict[str, Any]] = None,
+        checkpoint_path: Optional[str] = None,
     ):
         self.start_url = start_url
         self.mode = mode
@@ -61,6 +64,9 @@ class WebScraper:
         self.retries = retries
         self.render = render
         self.api_config = api_config or {}
+        self.checkpoint_path = checkpoint_path
+        if self.checkpoint_path:
+            os.makedirs(os.path.dirname(self.checkpoint_path) or ".", exist_ok=True)
         self._cancelled = False
         self._on_row: Optional[Callable[[Dict[str, str]], None]] = None
         self.session = requests.Session()
@@ -422,8 +428,9 @@ class WebScraper:
         all_results: List[Dict[str, str]] = []
         current_url = self.start_url
         page_param_start = self._guess_page_param_start(current_url, next_page_param)
+        resume_page = int(checkpoint.load(self.checkpoint_path).get("page", 0)) + 1 if self.checkpoint_path else 1
 
-        for page in range(1, max_pages + 1):
+        for page in range(resume_page, max_pages + 1):
             if self._should_stop():
                 if on_log:
                     on_log("任务已取消")
@@ -433,6 +440,8 @@ class WebScraper:
             html_text = self._fetch(current_url)
             rows = self.parse_fields(html_text, list_selector, fields, selector_type)
             self._emit_rows(rows, all_results)
+            if self.checkpoint_path:
+                checkpoint.save(self.checkpoint_path, {"page": page, "url": current_url, "count": len(all_results)})
             if on_progress:
                 on_progress(page, len(all_results))
             if page >= max_pages:
@@ -485,7 +494,8 @@ class WebScraper:
         elif pagination_type == "offset":
             offset_start = self._guess_offset_start(current_url, offset_param)
 
-        for page in range(1, max_pages + 1):
+        resume_page = int(checkpoint.load(self.checkpoint_path).get("page", 0)) + 1 if self.checkpoint_path else 1
+        for page in range(resume_page, max_pages + 1):
             if self._should_stop():
                 if on_log:
                     on_log("任务已取消")
@@ -501,6 +511,8 @@ class WebScraper:
             data = self._fetch_api(current_url)
             rows = self.parse_api_items(data, list_selector, fields)
             self._emit_rows(rows, all_results)
+            if self.checkpoint_path:
+                checkpoint.save(self.checkpoint_path, {"page": page, "url": current_url, "count": len(all_results)})
             if on_progress:
                 on_progress(page, len(all_results))
             if page >= max_pages:

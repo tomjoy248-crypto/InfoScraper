@@ -598,6 +598,7 @@ class ScraperGUI:
                 retries=self.retries_var.get(),
                 render=self.render_var.get(),
                 api_config=task.get("api_config"),
+                checkpoint_path=os.path.join(os.path.dirname(__file__), "checkpoints", (self.task_name_var.get().strip() or "current") + ".json"),
             )
             raw = scraper.run(
                 list_selector=self.list_selector_var.get().strip(),

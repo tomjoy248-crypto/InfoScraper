@@ -76,6 +76,18 @@ def save_record_stream(task_name: str, start_url: str, rows, batch_size: int = 5
     return record_id
 
 
+def existing_keys(task_name: str, keys: List[str]) -> set:
+    """Return keys already stored for a task for cross-run incremental filtering."""
+    if not keys:
+        return set()
+    init_db(); conn = _get_conn(); result = set()
+    records = conn.execute("SELECT id, data_json FROM scrape_records WHERE task_name=?", (task_name,)).fetchall()
+    for record_id, raw in records:
+        rows = json.loads(raw) if raw else [json.loads(x[0]) for x in conn.execute("SELECT row_json FROM scrape_rows WHERE record_id=?", (record_id,)).fetchall()]
+        result.update(tuple(str(row.get(k, "")).strip() for k in keys) for row in rows)
+    conn.close(); return result
+
+
 
 
 def list_records(limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:

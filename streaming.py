@@ -1,0 +1,28 @@
+"""Streaming row processing pipeline shared by GUI and scheduled jobs."""
+
+from typing import Dict, Iterable, Iterator, List, Optional
+
+from cleaner import CLEAN_RULES
+from dedup import IncrementalDeduplicator
+
+
+def process_rows(rows: Iterable[Dict[str, str]], field_rules: Optional[Dict[str, List[str]]] = None,
+                dedup_keys: Optional[List[str]] = None, known_keys: Optional[set] = None
+                ) -> Iterator[Dict[str, str]]:
+    """Clean, filter, and deduplicate rows one at a time with bounded state."""
+    rules = field_rules or {}
+    deduper = IncrementalDeduplicator(dedup_keys)
+    known = known_keys or set()
+    for row in rows:
+        item = dict(row)
+        for field, field_ruleset in rules.items():
+            if field in item:
+                for rule in field_ruleset:
+                    if rule in CLEAN_RULES:
+                        item[field] = CLEAN_RULES[rule](item[field])
+        if dedup_keys:
+            key = tuple(str(item.get(k, "")).strip() for k in dedup_keys)
+            if key in known:
+                continue
+        if deduper.accept(item):
+            yield item

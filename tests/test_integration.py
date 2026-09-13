@@ -19,3 +19,9 @@ def test_proxy_health_failure_is_safe():
     from database import check_proxy
     with patch("requests.get", side_effect=OSError("offline")):
         assert check_proxy("http://127.0.0.1:9", timeout=0.01) is False
+
+
+def test_cancel_interrupts_wait():
+    scraper = WebScraper("https://example.com")
+    scraper.cancel()
+    assert scraper._should_stop() is True

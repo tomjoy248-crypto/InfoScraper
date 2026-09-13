@@ -1,6 +1,8 @@
 """Offline integration checks for HTTP parsing and proxy selection."""
 
 from unittest.mock import Mock, patch
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
 
 from scraper import WebScraper
 from cancellation import CancellationToken
@@ -33,3 +35,20 @@ def test_shared_cancellation_token():
     scraper = WebScraper("https://example.com", cancellation_token=token)
     token.cancel()
     assert scraper._should_stop() is True
+
+
+def test_real_local_http_fetch():
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = b"<html><div class='item'><span>ok</span></div></html>"
+            self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+        def log_message(self, *_):
+            pass
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+    scraper = WebScraper(f"http://127.0.0.1:{server.server_port}")
+    # Bypass SSRF protection only for this isolated local test server.
+    with patch.object(scraper, "_validate_url"):
+        html = scraper._fetch(scraper.start_url)
+    server.shutdown()
+    assert "ok" in html

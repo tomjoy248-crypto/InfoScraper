@@ -18,6 +18,7 @@ from database import (
     add_proxy,
     list_proxies,
     delete_proxy,
+    existing_keys,
     check_proxy,
 )
 from scheduler import InAppScheduler
@@ -626,6 +627,13 @@ class ScraperGUI:
                 dedup_fields = [f.strip() for f in self.dedup_fields_var.get().split(",") if f.strip()]
                 processed = deduplicate(processed, dedup_fields if dedup_fields else None)
                 self.root.after(0, lambda: self._log(f"去重完成: {len(raw)} -> {len(processed)}"))
+            if self.incremental_var.get():
+                keys = [f.strip() for f in self.dedup_fields_var.get().split(",") if f.strip()]
+                if keys:
+                    known = existing_keys(self.task_name_var.get().strip(), keys)
+                    before = len(processed)
+                    processed = [r for r in processed if tuple(str(r.get(k, "")).strip() for k in keys) not in known]
+                    self.root.after(0, lambda: self._log(f"增量过滤: {before} -> {len(processed)}"))
 
             self.result_data = processed
             self.root.after(0, self._show_results)

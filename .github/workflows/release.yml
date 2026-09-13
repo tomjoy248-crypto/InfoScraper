@@ -14,9 +14,11 @@ jobs:
       - run: pip install -r requirements.txt pyinstaller
       - run: pyinstaller --noconfirm --clean --onefile --windowed --name InfoScraper main.py
       - run: copy dist\InfoScraper.exe installer\files\InfoScraper.exe
-      - run: python build_setup.py
+      - name: Create installer archive
+        shell: pwsh
+        run: Compress-Archive -Path dist\\InfoScraper.exe,README.md,USER_GUIDE.md -DestinationPath setup_output\\InfoScraper-Setup.zip
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/InfoScraper.exe
-            setup_output/InfoScraper-Setup.exe
+            setup_output/InfoScraper-Setup.zip

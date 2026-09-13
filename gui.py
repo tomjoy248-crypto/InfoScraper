@@ -18,6 +18,7 @@ from database import (
     add_proxy,
     list_proxies,
     delete_proxy,
+    check_proxy,
 )
 from scheduler import InAppScheduler
 from picker import pick_selector
@@ -288,7 +289,9 @@ class ScraperGUI:
         self.proxy_tree.heading("status", text="状态")
         self.proxy_tree.heading("fail", text="失败次数")
         self.proxy_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=2)
-        ttk.Button(proxy_frame, text="删除选中代理", command=self._del_proxy).pack(pady=2)
+        btns = tk.Frame(proxy_frame); btns.pack(pady=2)
+        ttk.Button(btns, text="删除选中代理", command=self._del_proxy).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btns, text="检查全部代理", command=self._check_proxies).pack(side=tk.LEFT, padx=2)
 
         self._refresh_proxies()
 
@@ -854,6 +857,19 @@ class ScraperGUI:
             if vals:
                 delete_proxy(vals[0])
         self._refresh_proxies()
+
+    def _check_proxies(self):
+        """Check proxies off the UI thread and refresh statuses on the UI thread."""
+        proxies = [p["address"] for p in list_proxies()]
+        def worker():
+            for address in proxies:
+                ok = check_proxy(address)
+                if not ok:
+                    from database import mark_proxy_fail
+                    mark_proxy_fail(address)
+                self.root.after(0, lambda a=address, good=ok: self._log(f"代理 {a}: {'可用' if good else '不可用'}"))
+            self.root.after(0, self._refresh_proxies)
+        threading.Thread(target=worker, daemon=True).start()
 
     # === 定时任务 ===
     def _add_schedule(self):

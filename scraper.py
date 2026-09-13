@@ -255,12 +255,20 @@ class WebScraper:
                         for k, v in self.cookies.items()
                     ]
                 )
-        try:
-            self._playwright_page.goto(url, wait_until="networkidle", timeout=self.timeout * 1000)
-            return self._playwright_page.content()
-        except Exception as exc:
-            self.close()
-            raise ScraperError(f"页面渲染失败: {exc}") from exc
+        last_error = None
+        for attempt in range(self.retries + 1):
+            try:
+                self._playwright_page.goto(url, wait_until="networkidle", timeout=self.timeout * 1000)
+                return self._playwright_page.content()
+            except Exception as exc:
+                last_error = exc
+                self.close()
+                if attempt < self.retries:
+                    time.sleep(min(2.0, 0.5 * (attempt + 1)))
+                    self._pw = sync_playwright().start()
+                    self._browser = self._pw.chromium.launch(headless=True)
+                    self._playwright_page = self._browser.new_page()
+        raise ScraperError(f"页面渲染失败（重试 {self.retries} 次）: {last_error}") from last_error
 
     def close(self):
         try:

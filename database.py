@@ -78,12 +78,12 @@ def save_record_stream(task_name: str, start_url: str, rows, batch_size: int = 5
 
 
 
-def list_records(limit: int = 100) -> List[Dict[str, Any]]:
+def list_records(limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
     init_db()
     conn = _get_conn()
     cur = conn.execute(
-        "SELECT id, task_name, start_url, total_count, created_at FROM scrape_records ORDER BY id DESC LIMIT ?",
-        (limit,),
+        "SELECT id, task_name, start_url, total_count, created_at FROM scrape_records ORDER BY id DESC LIMIT ? OFFSET ?",
+        (limit, offset),
     )
     rows = [
         {
@@ -104,10 +104,11 @@ def get_record(record_id: int) -> Optional[Dict[str, Any]]:
     conn = _get_conn()
     cur = conn.execute("SELECT * FROM scrape_records WHERE id = ?", (record_id,))
     row = cur.fetchone()
-    conn.close()
     if not row:
+        conn.close()
         return None
     data = json.loads(row[5]) if row[5] else [json.loads(r[0]) for r in conn.execute("SELECT row_json FROM scrape_rows WHERE record_id=? ORDER BY id", (record_id,)).fetchall()]
+    conn.close()
     return {
         "id": row[0],
         "task_name": row[1],

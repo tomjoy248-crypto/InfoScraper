@@ -11,6 +11,7 @@ from config import save_task, load_task, list_tasks
 from database import (
     init_db,
     save_record,
+    save_record_stream,
     list_records,
     get_record,
     delete_record,
@@ -626,7 +627,7 @@ class ScraperGUI:
             self.root.after(0, lambda: self._update_stat(len(raw), len(processed), elapsed))
 
             # 自动保存到数据库
-            record_id = save_record(
+            record_id = save_record_stream(
                 self.task_name_var.get().strip(),
                 self.url_var.get().strip(),
                 self.result_data,

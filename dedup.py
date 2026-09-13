@@ -1,6 +1,25 @@
 from typing import Dict, List, Optional
 
 
+class IncrementalDeduplicator:
+    """Bounded-state deduplicator for streaming scraper output."""
+
+    def __init__(self, keys: Optional[List[str]] = None):
+        self.keys = keys
+        self.seen = set()
+
+    def accept(self, row: Dict[str, str]) -> bool:
+        """Return True only for the first occurrence of a row."""
+        if self.keys:
+            key = tuple(str(row.get(k, "")).strip() for k in self.keys)
+        else:
+            key = tuple(sorted(row.items()))
+        if key in self.seen:
+            return False
+        self.seen.add(key)
+        return True
+
+
 def deduplicate(data: List[Dict[str, str]], keys: Optional[List[str]] = None) -> List[Dict[str, str]]:
     """根据指定字段去重，未指定则按整行去重。保留第一次出现的记录。
 

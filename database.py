@@ -50,6 +50,8 @@ def save_record(task_name: str, start_url: str, data: List[Dict[str, str]]) -> i
     return record_id
 
 
+
+
 def list_records(limit: int = 100) -> List[Dict[str, Any]]:
     init_db()
     conn = _get_conn()

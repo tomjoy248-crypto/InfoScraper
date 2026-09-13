@@ -307,6 +307,11 @@ class ScraperGUI:
         tk.Entry(dedup_frame, textvariable=self.dedup_fields_var).pack(fill=tk.X, padx=5, pady=2)
         self.incremental_var = tk.BooleanVar(value=False)
         tk.Checkbutton(dedup_frame, text="增量采集（按去重字段过滤本次重复项）", variable=self.incremental_var).pack(anchor=tk.W, padx=5, pady=2)
+        tk.Label(dedup_frame, text="增量字段（ID / URL / 时间，可选）:").pack(anchor=tk.W, padx=5)
+        self.incremental_id_var = tk.StringVar(); self.incremental_url_var = tk.StringVar(); self.incremental_time_var = tk.StringVar()
+        row = tk.Frame(dedup_frame); row.pack(fill=tk.X, padx=5)
+        for label, var in (("ID", self.incremental_id_var), ("URL", self.incremental_url_var), ("时间", self.incremental_time_var)):
+            tk.Label(row, text=label).pack(side=tk.LEFT); tk.Entry(row, textvariable=var, width=12).pack(side=tk.LEFT, padx=3)
 
         clean_frame = tk.LabelFrame(parent, text="清洗规则")
         clean_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -621,6 +626,8 @@ class ScraperGUI:
 
             # 数据处理
             dedup_fields = [f.strip() for f in self.dedup_fields_var.get().split(",") if f.strip()]
+            if self.incremental_var.get():
+                dedup_fields += [v.strip() for v in (self.incremental_id_var.get(), self.incremental_url_var.get(), self.incremental_time_var.get()) if v.strip() and v.strip() not in dedup_fields]
             known = existing_keys(self.task_name_var.get().strip(), dedup_fields) if self.incremental_var.get() and dedup_fields else set()
             processed = list(process_rows(raw, self.clean_rules, dedup_fields if self.dedup_var.get() else None, known))
             if self.clean_rules:
@@ -750,6 +757,7 @@ class ScraperGUI:
             "dedup": self.dedup_var.get(),
             "dedup_fields": self.dedup_fields_var.get(),
             "incremental": self.incremental_var.get(),
+            "incremental_id": self.incremental_id_var.get(), "incremental_url": self.incremental_url_var.get(), "incremental_time": self.incremental_time_var.get(),
             "clean_rules": self.clean_rules,
             "api_config": {
                 "method": self.api_method_var.get(),
@@ -794,6 +802,7 @@ class ScraperGUI:
         self.dedup_var.set(task.get("dedup", False))
         self.dedup_fields_var.set(task.get("dedup_fields", ""))
         self.incremental_var.set(bool(task.get("incremental", False)))
+        self.incremental_id_var.set(task.get("incremental_id", "")); self.incremental_url_var.set(task.get("incremental_url", "")); self.incremental_time_var.set(task.get("incremental_time", ""))
         self.clean_rules = task.get("clean_rules", {})
         self.clean_tree.delete(*self.clean_tree.get_children())
         for field, rules in self.clean_rules.items():

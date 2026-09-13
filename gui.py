@@ -303,6 +303,8 @@ class ScraperGUI:
         tk.Label(dedup_frame, text="去重字段（用逗号分隔，留空按整行去重）:").pack(anchor=tk.W, padx=5)
         self.dedup_fields_var = tk.StringVar()
         tk.Entry(dedup_frame, textvariable=self.dedup_fields_var).pack(fill=tk.X, padx=5, pady=2)
+        self.incremental_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(dedup_frame, text="增量采集（按去重字段过滤本次重复项）", variable=self.incremental_var).pack(anchor=tk.W, padx=5, pady=2)
 
         clean_frame = tk.LabelFrame(parent, text="清洗规则")
         clean_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -746,6 +748,7 @@ class ScraperGUI:
             "delay_random": self.delay_random_var.get(),
             "dedup": self.dedup_var.get(),
             "dedup_fields": self.dedup_fields_var.get(),
+            "incremental": self.incremental_var.get(),
             "clean_rules": self.clean_rules,
             "api_config": {
                 "method": self.api_method_var.get(),
@@ -789,6 +792,7 @@ class ScraperGUI:
         self.delay_random_var.set(task.get("delay_random", True))
         self.dedup_var.set(task.get("dedup", False))
         self.dedup_fields_var.set(task.get("dedup_fields", ""))
+        self.incremental_var.set(bool(task.get("incremental", False)))
         self.clean_rules = task.get("clean_rules", {})
         self.clean_tree.delete(*self.clean_tree.get_children())
         for field, rules in self.clean_rules.items():

@@ -8,6 +8,7 @@ import urllib.parse
 import ipaddress
 import socket
 import checkpoint
+from cancellation import CancellationToken
 from typing import Any, Callable, Dict, List, Optional
 
 import requests
@@ -50,6 +51,7 @@ class WebScraper:
         render: bool = False,
         api_config: Optional[Dict[str, Any]] = None,
         checkpoint_path: Optional[str] = None,
+        cancellation_token: Optional[CancellationToken] = None,
     ):
         self.start_url = start_url
         self.mode = mode
@@ -65,6 +67,7 @@ class WebScraper:
         self.render = render
         self.api_config = api_config or {}
         self.checkpoint_path = checkpoint_path
+        self.cancellation_token = cancellation_token or CancellationToken()
         if self.checkpoint_path:
             os.makedirs(os.path.dirname(self.checkpoint_path) or ".", exist_ok=True)
         self._cancelled = False
@@ -107,6 +110,7 @@ class WebScraper:
     def cancel(self):
         """标记任务取消，当前正在进行的请求不会立即停止，但翻页循环会中断。"""
         self._cancelled = True
+        self.cancellation_token.cancel()
         # Closing the session interrupts requests blocked on network I/O.
         try:
             self.session.close()
@@ -125,7 +129,7 @@ class WebScraper:
         target.extend(rows)
 
     def _should_stop(self) -> bool:
-        return self._cancelled
+        return self._cancelled or self.cancellation_token.is_cancelled()
 
     def _sleep_interruptibly(self, seconds: float) -> None:
         """Sleep in short intervals so cancellation is responsive."""
@@ -134,7 +138,8 @@ class WebScraper:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return
-            time.sleep(min(0.2, remaining))
+            if self.cancellation_token.wait(min(0.2, remaining)):
+                return
 
     def _fetch(self, url: str, method: str = "GET", payload: Optional[Dict] = None) -> str:
         self._validate_url(url)
@@ -264,8 +269,14 @@ class WebScraper:
         last_error = None
         for attempt in range(self.retries + 1):
             try:
-                self._playwright_page.goto(url, wait_until="networkidle", timeout=self.timeout * 1000)
-                return self._playwright_page.content()
+            self._playwright_page.goto(url, wait_until="networkidle", timeout=self.timeout * 1000)
+            content = self._playwright_page.content()
+            lowered = content.lower()
+            if any(marker in lowered for marker in ("captcha", "verify you are human", "验证码")):
+                raise ScraperError("检测到验证码页面")
+            if any(marker in lowered for marker in ("login", "sign in", "登录")) and self.cookies:
+                raise ScraperError("可能登录失效，请重新提供 Cookie")
+            return content
             except Exception as exc:
                 last_error = exc
                 self.close()

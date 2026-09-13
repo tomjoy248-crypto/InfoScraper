@@ -3,6 +3,7 @@
 from unittest.mock import Mock, patch
 
 from scraper import WebScraper
+from cancellation import CancellationToken
 
 
 def test_api_session_request_and_json():
@@ -24,4 +25,11 @@ def test_proxy_health_failure_is_safe():
 def test_cancel_interrupts_wait():
     scraper = WebScraper("https://example.com")
     scraper.cancel()
+    assert scraper._should_stop() is True
+
+
+def test_shared_cancellation_token():
+    token = CancellationToken()
+    scraper = WebScraper("https://example.com", cancellation_token=token)
+    token.cancel()
     assert scraper._should_stop() is True

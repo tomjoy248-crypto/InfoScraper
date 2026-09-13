@@ -65,17 +65,7 @@ def mark_proxy_success(address: str) -> None:
 
 
 def save_record(task_name: str, start_url: str, data: List[Dict[str, str]]) -> int:
-    init_db()
-    conn = _get_conn()
-    cur = conn.execute(
-        "INSERT INTO scrape_records (task_name, start_url, total_count, created_at, data_json) VALUES (?, ?, ?, ?, ?)",
-        (task_name or "未命名", start_url, len(data), datetime.now().isoformat(), json.dumps(data, ensure_ascii=False)),
-    )
-    conn.execute("CREATE TABLE IF NOT EXISTS scrape_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, record_id INTEGER NOT NULL, row_json TEXT NOT NULL)")
-    record_id = cur.lastrowid
-    conn.commit()
-    conn.close()
-    return record_id
+    return save_record_stream(task_name, start_url, data)
 
 
 def save_record_stream(task_name: str, start_url: str, rows, batch_size: int = 500) -> int:
@@ -151,6 +141,7 @@ def get_record(record_id: int) -> Optional[Dict[str, Any]]:
 def delete_record(record_id: int):
     init_db()
     conn = _get_conn()
+    conn.execute("DELETE FROM scrape_rows WHERE record_id = ?", (record_id,))
     conn.execute("DELETE FROM scrape_records WHERE id = ?", (record_id,))
     conn.commit()
     conn.close()

@@ -27,6 +27,13 @@ jobs:
           python-version: '3.11'
       - run: pip install -r requirements.txt pyinstaller
       - run: pyinstaller --noconfirm --clean --onefile --windowed --name InfoScraper main.py
+      - name: Smoke test executable startup
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist\\InfoScraper.exe -PassThru
+          Start-Sleep -Seconds 5
+          if ($p.HasExited -and $p.ExitCode -ne 0) { throw "InfoScraper exited with code $($p.ExitCode)" }
+          Stop-Process -Id $p.Id -Force
       - uses: actions/upload-artifact@v4
         with:
           name: InfoScraper-windows

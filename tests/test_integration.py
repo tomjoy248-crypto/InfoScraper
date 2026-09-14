@@ -17,6 +17,7 @@ def test_api_session_request_and_json():
     with patch("scraper.socket.getaddrinfo", return_value=[(2,1,6,'',('93.184.216.34',443))]), patch.object(scraper.session, "get", return_value=response) as request:
         assert scraper._fetch_api("https://example.com/api")["data"][0]["id"] == 1
         request.assert_called_once()
+        assert request.call_args.kwargs["allow_redirects"] is False
 
 def test_proxy_auto_cooldown(tmp_path, monkeypatch):
     import database

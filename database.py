@@ -71,8 +71,10 @@ def save_record(task_name: str, start_url: str, data: List[Dict[str, str]]) -> i
 def save_record_stream(task_name: str, start_url: str, rows, batch_size: int = 500) -> int:
     """Persist rows incrementally in a normalized table."""
     init_db(); conn = _get_conn()
-    cur = conn.execute("INSERT INTO scrape_records (task_name,start_url,total_count,created_at,data_json) VALUES (?,?,?,?,?)",
-                       (task_name or "未命名", start_url, 0, datetime.now().isoformat(), ""))
+    # Rows are stored exclusively in scrape_rows; data_json is left NULL for
+    # backwards-compatible schemas and is never read by the application.
+    cur = conn.execute("INSERT INTO scrape_records (task_name,start_url,total_count,created_at,data_json) VALUES (?,?,?,?,NULL)",
+                       (task_name or "未命名", start_url, 0, datetime.now().isoformat()))
     record_id = cur.lastrowid; count = 0; batch = []
     for row in rows:
         batch.append((record_id, json.dumps(row, ensure_ascii=False))); count += 1
@@ -88,10 +90,10 @@ def existing_keys(task_name: str, keys: List[str]) -> set:
     if not keys:
         return set()
     init_db(); conn = _get_conn(); result = set()
-    records = conn.execute("SELECT id, data_json FROM scrape_records WHERE task_name=?", (task_name,)).fetchall()
-    for record_id, raw in records:
-        rows = json.loads(raw) if raw else [json.loads(x[0]) for x in conn.execute("SELECT row_json FROM scrape_rows WHERE record_id=?", (record_id,)).fetchall()]
-        result.update(tuple(str(row.get(k, "")).strip() for k in keys) for row in rows)
+    records = conn.execute("SELECT id FROM scrape_records WHERE task_name=?", (task_name,)).fetchall()
+    for (record_id,) in records:
+        rows = conn.execute("SELECT row_json FROM scrape_rows WHERE record_id=?", (record_id,)).fetchall()
+        result.update(tuple(str(row.get(k, "")).strip() for k in keys) for row in (json.loads(x[0]) for x in rows))
     conn.close(); return result
 
 
@@ -126,7 +128,7 @@ def get_record(record_id: int) -> Optional[Dict[str, Any]]:
     if not row:
         conn.close()
         return None
-    data = json.loads(row[5]) if row[5] else [json.loads(r[0]) for r in conn.execute("SELECT row_json FROM scrape_rows WHERE record_id=? ORDER BY id", (record_id,)).fetchall()]
+    data = [json.loads(r[0]) for r in conn.execute("SELECT row_json FROM scrape_rows WHERE record_id=? ORDER BY id", (record_id,)).fetchall()]
     conn.close()
     return {
         "id": row[0],

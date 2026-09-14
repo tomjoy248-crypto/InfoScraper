@@ -52,6 +52,7 @@ class WebScraper:
         api_config: Optional[Dict[str, Any]] = None,
         checkpoint_path: Optional[str] = None,
         cancellation_token: Optional[CancellationToken] = None,
+        login_handler: Optional[Callable[[Any], bool]] = None,
     ):
         self.start_url = start_url
         self.mode = mode
@@ -68,6 +69,7 @@ class WebScraper:
         self.api_config = api_config or {}
         self.checkpoint_path = checkpoint_path
         self.cancellation_token = cancellation_token or CancellationToken()
+        self.login_handler = login_handler
         self._resolved_hosts: Dict[str, str] = {}
         if self.checkpoint_path:
             os.makedirs(os.path.dirname(self.checkpoint_path) or ".", exist_ok=True)
@@ -295,6 +297,8 @@ class WebScraper:
                 if any(marker in lowered for marker in ("captcha", "verify you are human", "验证码")):
                     raise ScraperError("检测到验证码页面")
                 if any(marker in lowered for marker in ("login", "sign in", "登录")) and self.cookies:
+                    if self.login_handler and self.login_handler(self._playwright_page):
+                        continue
                     raise ScraperError("可能登录失效，请重新提供 Cookie")
                 return content
             except Exception as exc:

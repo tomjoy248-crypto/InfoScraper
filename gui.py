@@ -14,6 +14,7 @@ from database import (
     save_record_stream,
     list_records,
     get_record,
+    get_record_rows,
     delete_record,
     add_proxy,
     list_proxies,
@@ -980,15 +981,14 @@ class ScraperGUI:
         if not selected:
             return
         record_id = self.history_tree.item(selected[0], "values")[0]
-        record = get_record(int(record_id))
-        if not record:
-            return
         top = tk.Toplevel(self.root)
         top.title(f"历史记录详情 #{record_id}")
         top.geometry("700x500")
         text = scrolledtext.ScrolledText(top)
         text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        text.insert(tk.END, json.dumps(record["data"], ensure_ascii=False, indent=2))
+        rows = get_record_rows(int(record_id), limit=200, offset=0)
+        text.insert(tk.END, json.dumps(rows, ensure_ascii=False, indent=2))
+        text.insert(tk.END, "\n\n仅显示前 200 条；可通过导出功能获取完整记录。")
         text.configure(state=tk.DISABLED)
 
     def _export_history(self):

@@ -34,6 +34,7 @@ def init_db():
             added_at TEXT
         )
     """)
+    conn.execute("CREATE TABLE IF NOT EXISTS scrape_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, record_id INTEGER NOT NULL, row_json TEXT NOT NULL)")
     conn.commit()
     try:
         conn.execute("ALTER TABLE proxies ADD COLUMN cooldown_until REAL DEFAULT 0")

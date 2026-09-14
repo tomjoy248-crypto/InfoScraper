@@ -489,10 +489,40 @@ class WebScraper:
             self._sleep_interruptibly(self.delay + (random.uniform(0, self.delay) if self.delay_random else 0))
 
     def _iter_api(self, list_selector, fields, **kwargs):
-        """Page-level API generator; delegates pagination and yields each row."""
-        rows = self._run_api(list_selector, fields, kwargs.get("max_pages", 1),
-                             kwargs.get("on_progress"), kwargs.get("on_log"))
-        yield from rows
+        """Page-level API generator; emits each parsed row as soon as its page arrives."""
+        cfg = self.api_config; ptype = cfg.get("pagination_type", "none")
+        max_pages = kwargs.get("max_pages", 1); on_progress = kwargs.get("on_progress"); on_log = kwargs.get("on_log")
+        url = self.start_url; state = checkpoint.load(self.checkpoint_path) if self.checkpoint_path else {}
+        start = int(state.get("page", 0)) + 1 if state else 1
+        if state.get("url"): url = state["url"]
+        total = int(state.get("count", 0)) if state else 0
+        for page in range(start, max_pages + 1):
+            if self._should_stop(): break
+            if ptype in ("param", "offset"):
+                key = cfg.get("pagination_param", "page") if ptype == "param" else cfg.get("offset_param", "offset")
+                step = cfg.get("pagination_step", 1) if ptype == "param" else cfg.get("offset_step", 20)
+                cfg["request_page_value"] = (1 if ptype == "param" else 0) + (page - 1) * step
+            data = self._fetch_api(url)
+            for row in self.parse_api_items(data, list_selector, fields):
+                total += 1; yield row
+            if self.checkpoint_path: checkpoint.save(self.checkpoint_path, {"page": page, "url": url, "count": total})
+            if on_progress: on_progress(page, total)
+            if page >= max_pages: break
+            path = cfg.get("next_url_path"); cpath = cfg.get("cursor_path")
+            if path:
+                vals = jsonpath.query(data, path)
+                if not vals or not vals[0]: break
+                url = urllib.parse.urljoin(url, str(vals[0]))
+            elif cpath:
+                vals = jsonpath.query(data, cpath)
+                if not vals or vals[0] in (None, ""): break
+                url = self._build_page_url(url, cfg.get("cursor_param", "cursor"), str(vals[0]))
+            elif ptype in ("param", "offset"):
+                key = cfg.get("pagination_param", "page") if ptype == "param" else cfg.get("offset_param", "offset")
+                step = cfg.get("pagination_step", 1) if ptype == "param" else cfg.get("offset_step", 20)
+                url = self._build_page_url(url, key, (1 if ptype == "param" else 0) + page * step)
+            else: break
+            self._sleep_interruptibly(self.delay)
 
     def _run_static(
         self,

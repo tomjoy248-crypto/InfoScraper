@@ -989,9 +989,23 @@ class ScraperGUI:
         top.geometry("700x500")
         text = scrolledtext.ScrolledText(top)
         text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        rows = get_record_rows(int(record_id), limit=200, offset=0)
-        text.insert(tk.END, json.dumps(rows, ensure_ascii=False, indent=2))
-        text.insert(tk.END, "\n\n仅显示前 200 条；可通过导出功能获取完整记录。")
+        page = {"offset": 0}; page_size = 200
+        bar = tk.Frame(top); bar.pack(fill=tk.X, padx=5)
+        def refresh_page():
+            rows = get_record_rows(int(record_id), limit=page_size, offset=page["offset"])
+            text.configure(state=tk.NORMAL); text.delete("1.0", tk.END)
+            text.insert(tk.END, json.dumps(rows, ensure_ascii=False, indent=2))
+            text.insert(tk.END, f"\n\n当前显示 {page['offset'] + 1}-{page['offset'] + len(rows)} 条")
+            text.configure(state=tk.DISABLED)
+            prev.configure(state=tk.NORMAL if page["offset"] else tk.DISABLED)
+            next_btn.configure(state=tk.NORMAL if len(rows) == page_size else tk.DISABLED)
+        def prev_page():
+            page["offset"] = max(0, page["offset"] - page_size); refresh_page()
+        def next_page():
+            page["offset"] += page_size; refresh_page()
+        prev = ttk.Button(bar, text="上一页", command=prev_page); prev.pack(side=tk.LEFT)
+        next_btn = ttk.Button(bar, text="下一页", command=next_page); next_btn.pack(side=tk.LEFT, padx=5)
+        refresh_page()
         text.configure(state=tk.DISABLED)
 
     def _export_history(self):

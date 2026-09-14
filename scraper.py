@@ -178,17 +178,19 @@ class WebScraper:
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise ScraperError("仅支持 http/https URL")
         try:
-            first = socket.gethostbyname(parsed.hostname)
-            second = socket.gethostbyname(parsed.hostname)
-            if first != second:
+            first_all = {r[4][0] for r in socket.getaddrinfo(parsed.hostname, parsed.port or 443, type=socket.SOCK_STREAM)}
+            second_all = {r[4][0] for r in socket.getaddrinfo(parsed.hostname, parsed.port or 443, type=socket.SOCK_STREAM)}
+            if first_all != second_all or not first_all:
                 raise ScraperError("DNS 解析结果不稳定，已阻止请求")
+            first = sorted(first_all)[0]
             locked = self._resolved_hosts.get(parsed.hostname)
             if locked and locked != first:
                 raise ScraperError("目标地址发生变化，已阻止可能的 DNS 重绑定")
             self._resolved_hosts[parsed.hostname] = first
-            address = ipaddress.ip_address(first)
-            if address.is_private or address.is_loopback or address.is_link_local:
-                raise ScraperError("出于安全原因，禁止访问内网或本机地址")
+            for value in first_all:
+                address = ipaddress.ip_address(value)
+                if address.is_private or address.is_loopback or address.is_link_local or address.is_reserved:
+                    raise ScraperError("出于安全原因，禁止访问内网或本机地址")
         except socket.gaierror:
             pass
 

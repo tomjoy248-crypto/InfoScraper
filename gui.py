@@ -609,7 +609,7 @@ class ScraperGUI:
                 api_config=task.get("api_config"),
                 checkpoint_path=os.path.join(os.path.dirname(__file__), "checkpoints", (self.task_name_var.get().strip() or "current") + ".json"),
             )
-            raw = scraper.run(
+            raw = scraper.iter_run(
                 list_selector=self.list_selector_var.get().strip(),
                 fields=self.fields,
                 selector_type=self.selector_type_var.get(),
@@ -621,31 +621,39 @@ class ScraperGUI:
                 on_progress=lambda p, total: self.root.after(0, lambda: self._update_progress(p, total)),
                 on_log=lambda msg: self.root.after(0, lambda: self._log(msg)),
             )
-            scraper.close()
-            self.raw_data = raw
+            raw_count = 0
 
             # 数据处理
             dedup_fields = [f.strip() for f in self.dedup_fields_var.get().split(",") if f.strip()]
             if self.incremental_var.get():
                 dedup_fields += [v.strip() for v in (self.incremental_id_var.get(), self.incremental_url_var.get(), self.incremental_time_var.get()) if v.strip() and v.strip() not in dedup_fields]
             known = existing_keys(self.task_name_var.get().strip(), dedup_fields) if self.incremental_var.get() and dedup_fields else set()
-            processed = list(process_rows(raw, self.clean_rules, dedup_fields if self.dedup_var.get() else None, known))
+            def stream_rows():
+                nonlocal raw_count
+                for row in raw:
+                    raw_count += 1
+                    if len(self.raw_data) < 100:
+                        self.raw_data.append(row)
+                    yield row
+            processed = []
+            def processed_rows():
+                for row in process_rows(stream_rows(), self.clean_rules, dedup_fields if self.dedup_var.get() else None, known):
+                    if len(processed) < 100:
+                        processed.append(row)
+                    yield row
+            record_id = save_record_stream(self.task_name_var.get().strip(), self.url_var.get().strip(), processed_rows())
+            scraper.close()
             if self.clean_rules:
                 self.root.after(0, lambda: self._log(f"已应用清洗规则: {len(self.clean_rules)} 个字段"))
             if self.dedup_var.get() or self.incremental_var.get():
-                self.root.after(0, lambda: self._log(f"逐条处理完成: {len(raw)} -> {len(processed)}"))
+                self.root.after(0, lambda: self._log(f"逐条处理完成: {raw_count} 条原始数据"))
 
             self.result_data = processed
             self.root.after(0, self._show_results)
             elapsed = round(time.time() - self.start_time, 2)
-            self.root.after(0, lambda: self._update_stat(len(raw), len(processed), elapsed))
+            self.root.after(0, lambda: self._update_stat(raw_count, len(processed), elapsed))
 
             # 自动保存到数据库
-            record_id = save_record_stream(
-                self.task_name_var.get().strip(),
-                self.url_var.get().strip(),
-                self.result_data,
-            )
             self.root.after(0, lambda: self._log(f"已保存到历史记录，ID: {record_id}"))
             self.root.after(0, self._refresh_history)
         except Exception as e:

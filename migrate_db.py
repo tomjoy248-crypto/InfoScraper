@@ -5,7 +5,7 @@ import sqlite3
 import sys
 
 
-def migrate(path: str) -> int:
+def migrate(path: str, drop_legacy: bool = False) -> int:
     """Move legacy JSON payloads into normalized rows and clear the payload."""
     conn = sqlite3.connect(path)
     conn.execute("CREATE TABLE IF NOT EXISTS scrape_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, record_id INTEGER NOT NULL, row_json TEXT NOT NULL)")
@@ -21,6 +21,13 @@ def migrate(path: str) -> int:
                          [(record_id, json.dumps(row, ensure_ascii=False)) for row in rows])
         conn.execute("UPDATE scrape_records SET data_json='' WHERE id=?", (record_id,))
         moved += len(rows)
+    if drop_legacy:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(scrape_records)")]
+        if "data_json" in cols:
+            conn.execute("ALTER TABLE scrape_records RENAME TO scrape_records_legacy")
+            conn.execute("CREATE TABLE scrape_records (id INTEGER PRIMARY KEY, task_name TEXT, start_url TEXT, total_count INTEGER, created_at TEXT)")
+            conn.execute("INSERT INTO scrape_records SELECT id,task_name,start_url,total_count,created_at FROM scrape_records_legacy")
+            conn.execute("DROP TABLE scrape_records_legacy")
     conn.commit(); conn.close()
     return moved
 

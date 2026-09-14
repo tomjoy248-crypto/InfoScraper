@@ -139,6 +139,13 @@ def get_record(record_id: int) -> Optional[Dict[str, Any]]:
         "data": data,
     }
 
+def get_record_rows(record_id: int, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+    """Read a bounded page of rows for large historical records."""
+    init_db(); conn = _get_conn()
+    rows = conn.execute("SELECT row_json FROM scrape_rows WHERE record_id=? ORDER BY id LIMIT ? OFFSET=?", (record_id, limit, offset)).fetchall()
+    conn.close()
+    return [json.loads(r[0]) for r in rows]
+
 
 def delete_record(record_id: int):
     init_db()

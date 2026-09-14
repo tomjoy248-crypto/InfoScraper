@@ -156,10 +156,10 @@ class WebScraper:
                 proxies = self._pick_proxy()
                 if method.upper() == "POST":
                     resp = self.session.post(
-                        url, data=payload, proxies=proxies, timeout=self.timeout
+                        url, data=payload, proxies=proxies, timeout=self.timeout, allow_redirects=False
                     )
                 else:
-                    resp = self.session.get(url, proxies=proxies, timeout=self.timeout)
+                    resp = self.session.get(url, proxies=proxies, timeout=self.timeout, allow_redirects=False)
                 resp.raise_for_status()
                 if self._should_stop():
                     raise ScraperError("请求已取消")
@@ -231,7 +231,7 @@ class WebScraper:
                             headers=req_headers,
                             json=request_body,
                             proxies=proxies,
-                            timeout=self.timeout,
+                            timeout=self.timeout, allow_redirects=False,
                         )
                     else:
                         req_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
@@ -240,14 +240,14 @@ class WebScraper:
                             headers=req_headers,
                             data=request_body,
                             proxies=proxies,
-                            timeout=self.timeout,
+                            timeout=self.timeout, allow_redirects=False,
                         )
                 else:
                     resp = self.session.get(
                         url,
                         headers=req_headers,
                         proxies=proxies,
-                        timeout=self.timeout,
+                        timeout=self.timeout, allow_redirects=False,
                     )
                 resp.raise_for_status()
                 if self._should_stop():

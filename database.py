@@ -176,8 +176,8 @@ def list_proxies() -> List[Dict[str, Any]]:
     conn = _get_conn()
     conn.execute("UPDATE proxies SET enabled=1, cooldown_until=0 WHERE enabled=0 AND cooldown_until > 0 AND cooldown_until <= ?", (time.time(),))
     conn.commit()
-    cur = conn.execute("SELECT address, enabled, fail_count FROM proxies ORDER BY enabled DESC, CASE WHEN latency=0 THEN 999999 ELSE latency END ASC, id DESC")
-    rows = [{"address": r[0], "enabled": bool(r[1]), "fail_count": r[2]} for r in cur.fetchall()]
+    cur = conn.execute("SELECT address, enabled, fail_count, latency, cooldown_until FROM proxies ORDER BY enabled DESC, CASE WHEN latency=0 THEN 999999 ELSE latency END ASC, id DESC")
+    rows = [{"address": r[0], "enabled": bool(r[1]), "fail_count": r[2], "latency": r[3] or 0, "cooldown_until": r[4] or 0} for r in cur.fetchall()]
     conn.close()
     return rows
 

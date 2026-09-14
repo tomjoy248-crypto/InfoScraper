@@ -15,7 +15,14 @@ def test_api_session_request_and_json():
     response.json.return_value = {"data": [{"id": 1}]}
     response.raise_for_status.return_value = None
     with patch("scraper.socket.getaddrinfo", return_value=[(2,1,6,'',('93.184.216.34',443))]), patch.object(scraper.session, "get", return_value=response) as request:
-        assert scraper._fetch_api("https://example.com/api")["data"][0]["id"] == 1
+            assert scraper._fetch_api("https://example.com/api")["data"][0]["id"] == 1
+
+def test_proxy_auto_cooldown(tmp_path, monkeypatch):
+    import database
+    monkeypatch.setattr(database, "DB_PATH", str(tmp_path / "proxy.db"))
+    database.add_proxy("http://127.0.0.1:9")
+    for _ in range(3): database.mark_proxy_fail("http://127.0.0.1:9")
+    assert database.list_proxies()[0]["enabled"] is False
         request.assert_called_once()
 
 

@@ -444,9 +444,55 @@ class WebScraper:
         return result
 
     def iter_run(self, list_selector: str, fields: List[Dict[str, Any]], **kwargs):
-        """Yield parsed rows incrementally while preserving ``run`` compatibility."""
-        for row in self.run(list_selector, fields, **kwargs):
-            yield row
+        """Yield parsed rows incrementally without retaining the full result set."""
+        if self.mode == "api":
+            # API responses are decoded as a page at a time; rows are yielded
+            # immediately even though the HTTP response itself is page-based.
+            yield from self._iter_api(list_selector, fields, **kwargs)
+            return
+        yield from self._iter_static(list_selector, fields, **kwargs)
+
+    def _iter_static(self, list_selector, fields, selector_type="css", max_pages=1,
+                     next_page_selector=None, next_page_mode="url",
+                     next_page_param="page", next_page_step=1,
+                     on_progress=None, on_log=None):
+        current_url = self.start_url
+        state = checkpoint.load(self.checkpoint_path) if self.checkpoint_path else {}
+        resume_page = int(state.get("page", 0)) + 1 if state else 1
+        if state.get("url"):
+            current_url = state["url"]
+        page_start = self._guess_page_param_start(current_url, next_page_param)
+        emitted = int(state.get("count", 0)) if state else 0
+        for page in range(resume_page, max_pages + 1):
+            if self._should_stop():
+                if on_log: on_log("任务已取消")
+                break
+            if on_log: on_log(f"正在采集第 {page} 页: {current_url}")
+            html_text = self._fetch(current_url)
+            rows = self.parse_fields(html_text, list_selector, fields, selector_type)
+            for row in rows:
+                if self._should_stop(): break
+                emitted += 1
+                yield row
+            if self.checkpoint_path:
+                checkpoint.save(self.checkpoint_path, {"page": page, "url": current_url, "count": emitted})
+            if on_progress: on_progress(page, emitted)
+            if page >= max_pages or self._should_stop(): break
+            if next_page_mode == "param":
+                current_url = self._build_page_url(current_url, next_page_param,
+                                                   page_start + page * next_page_step)
+            elif next_page_selector:
+                next_a = BeautifulSoup(html_text, "lxml").select_one(next_page_selector)
+                if not next_a or not next_a.get("href"): break
+                current_url = urllib.parse.urljoin(current_url, next_a["href"])
+            else: break
+            self._sleep_interruptibly(self.delay + (random.uniform(0, self.delay) if self.delay_random else 0))
+
+    def _iter_api(self, list_selector, fields, **kwargs):
+        """Page-level API generator; delegates pagination and yields each row."""
+        rows = self._run_api(list_selector, fields, kwargs.get("max_pages", 1),
+                             kwargs.get("on_progress"), kwargs.get("on_log"))
+        yield from rows
 
     def _run_static(
         self,

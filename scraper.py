@@ -143,6 +143,8 @@ class WebScraper:
                 return
 
     def _fetch(self, url: str, method: str = "GET", payload: Optional[Dict] = None) -> str:
+        if self._should_stop():
+            raise ScraperError("请求已取消")
         self._validate_url(url)
         if self.render:
             return self._fetch_render(url)
@@ -157,6 +159,8 @@ class WebScraper:
                 else:
                     resp = self.session.get(url, proxies=proxies, timeout=self.timeout)
                 resp.raise_for_status()
+                if self._should_stop():
+                    raise ScraperError("请求已取消")
                 return resp.text
             except requests.RequestException as e:
                 last_error = e
@@ -189,6 +193,8 @@ class WebScraper:
     def _fetch_api(self, url: str) -> Any:
         """API 模式请求，返回解析后的 JSON。"""
         self._validate_url(url)
+        if self._should_stop():
+            raise ScraperError("请求已取消")
         cfg = self.api_config
         method = (cfg.get("method") or "GET").upper()
         if method not in {"GET", "POST"}:
@@ -240,6 +246,8 @@ class WebScraper:
                         timeout=self.timeout,
                     )
                 resp.raise_for_status()
+                if self._should_stop():
+                    raise ScraperError("请求已取消")
                 return resp.json()
             except requests.RequestException as e:
                 last_error = e
@@ -277,7 +285,11 @@ class WebScraper:
         last_error = None
         for attempt in range(self.retries + 1):
             try:
+                if self._should_stop():
+                    raise ScraperError("页面操作已取消")
                 self._playwright_page.goto(url, wait_until="networkidle", timeout=self.timeout * 1000)
+                if self._should_stop():
+                    raise ScraperError("页面操作已取消")
                 content = self._playwright_page.content()
                 lowered = content.lower()
                 if any(marker in lowered for marker in ("captcha", "verify you are human", "验证码")):

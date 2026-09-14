@@ -268,6 +268,16 @@ class WebScraper:
                 raise ScraperError(f"API 响应不是有效 JSON: {e}")
         raise ScraperError(f"API 请求失败（重试 {self.retries} 次）: {last_error}")
 
+    @staticmethod
+    def iter_json_response(response, prefix="item"):
+        """Stream a JSON array from a requests response when ijson is available."""
+        try:
+            import ijson
+            yield from ijson.items(response.raw, prefix)
+        except ImportError:
+            data = response.json()
+            yield from (data if isinstance(data, list) else [])
+
     def _fetch_render(self, url: str) -> str:
         try:
             from playwright.sync_api import sync_playwright

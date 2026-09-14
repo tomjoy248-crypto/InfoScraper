@@ -33,6 +33,7 @@ def migrate(path: str, drop_legacy: bool = False) -> int:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        raise SystemExit("用法: python migrate_db.py scraper.db")
-    print(f"已迁移 {migrate(sys.argv[1])} 条记录")
+    if len(sys.argv) not in (2, 3):
+        raise SystemExit("用法: python migrate_db.py scraper.db [--drop-legacy]")
+    drop = len(sys.argv) == 3 and sys.argv[2] == "--drop-legacy"
+    print(f"已迁移 {migrate(sys.argv[1], drop_legacy=drop)} 条记录")

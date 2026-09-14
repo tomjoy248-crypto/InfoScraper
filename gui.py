@@ -16,6 +16,7 @@ from database import (
     list_records,
     get_record,
     get_record_rows,
+    count_record_rows,
     delete_record,
     add_proxy,
     list_proxies,
@@ -990,13 +991,15 @@ class ScraperGUI:
         top.geometry("700x500")
         text = scrolledtext.ScrolledText(top)
         text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        page = {"offset": 0}; page_size = 200
+        page = {"offset": 0}; page_size = 200; total = count_record_rows(int(record_id))
         bar = tk.Frame(top); bar.pack(fill=tk.X, padx=5)
         def refresh_page():
             rows = get_record_rows(int(record_id), limit=page_size, offset=page["offset"])
             text.configure(state=tk.NORMAL); text.delete("1.0", tk.END)
             text.insert(tk.END, json.dumps(rows, ensure_ascii=False, indent=2))
-            text.insert(tk.END, f"\n\n当前显示 {page['offset'] + 1}-{page['offset'] + len(rows)} 条")
+            pages = max(1, (total + page_size - 1) // page_size)
+            current = page["offset"] // page_size + 1
+            text.insert(tk.END, f"\n\n第 {current}/{pages} 页，显示 {page['offset'] + 1}-{page['offset'] + len(rows)} / 共 {total} 条")
             text.configure(state=tk.DISABLED)
             prev.configure(state=tk.NORMAL if page["offset"] else tk.DISABLED)
             next_btn.configure(state=tk.NORMAL if len(rows) == page_size else tk.DISABLED)

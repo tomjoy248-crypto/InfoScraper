@@ -1,6 +1,7 @@
 import json
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import time
 import tkinter as tk
 from tkinter import messagebox, ttk, scrolledtext, filedialog
@@ -886,7 +887,7 @@ class ScraperGUI:
         """Check proxies off the UI thread and refresh statuses on the UI thread."""
         proxies = [p["address"] for p in list_proxies()]
         def worker():
-            for address in proxies:
+            def check_one(address):
                 ok = check_proxy(address)
                 if not ok:
                     from database import mark_proxy_fail
@@ -898,6 +899,8 @@ class ScraperGUI:
                     from database import mark_proxy_success
                     mark_proxy_success(address)
                 self.root.after(0, lambda a=address, good=ok: self._log(f"代理 {a}: {'可用' if good else '不可用'}"))
+            with ThreadPoolExecutor(max_workers=min(8, max(1, len(proxies)))) as pool:
+                list(pool.map(check_one, proxies))
             self.root.after(0, self._refresh_proxies)
         threading.Thread(target=worker, daemon=True).start()
 

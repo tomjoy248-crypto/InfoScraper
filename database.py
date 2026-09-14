@@ -193,6 +193,6 @@ def delete_proxy(address: str):
 def mark_proxy_fail(address: str):
     init_db()
     conn = _get_conn()
-    conn.execute("UPDATE proxies SET fail_count = fail_count + 1 WHERE address = ?", (address,))
+    conn.execute("UPDATE proxies SET fail_count = fail_count + 1, enabled = CASE WHEN fail_count + 1 >= 3 THEN 0 ELSE enabled END, cooldown_until = CASE WHEN fail_count + 1 >= 3 THEN ? ELSE cooldown_until END WHERE address = ?", (time.time() + 300, address))
     conn.commit()
     conn.close()

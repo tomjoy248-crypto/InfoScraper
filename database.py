@@ -147,6 +147,12 @@ def get_record_rows(record_id: int, limit: int = 100, offset: int = 0) -> List[D
     conn.close()
     return [json.loads(r[0]) for r in rows]
 
+def count_record_rows(record_id: int) -> int:
+    """Return row count without loading historical payloads."""
+    init_db(); conn = _get_conn()
+    value = conn.execute("SELECT COUNT(*) FROM scrape_rows WHERE record_id=?", (record_id,)).fetchone()[0]
+    conn.close(); return int(value)
+
 
 def delete_record(record_id: int):
     init_db()

@@ -252,6 +252,8 @@ class WebScraper:
                 resp.raise_for_status()
                 if self._should_stop():
                     raise ScraperError("请求已取消")
+                if cfg.get("stream_prefix"):
+                    return list(self.iter_json_response(resp, cfg["stream_prefix"]))
                 return resp.json()
             except requests.RequestException as e:
                 last_error = e

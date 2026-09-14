@@ -16,7 +16,9 @@ jobs:
       - run: copy dist\InfoScraper.exe installer\files\InfoScraper.exe
       - name: Create installer archive
         shell: pwsh
-        run: Compress-Archive -Path dist\\InfoScraper.exe,README.md,USER_GUIDE.md -DestinationPath setup_output\\InfoScraper-Setup.zip
+        run: |
+          New-Item -ItemType Directory -Force setup_output | Out-Null
+          Compress-Archive -Path dist\\InfoScraper.exe,README.md,USER_GUIDE.md -DestinationPath setup_output\\InfoScraper-Setup.zip -Force
       - name: Build Inno Setup wizard
         shell: pwsh
         run: |
@@ -34,10 +36,13 @@ jobs:
         run: |
           Get-FileHash dist\\InfoScraper.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  InfoScraper.exe" } | Out-File setup_output\\SHA256SUMS.txt -Encoding ascii
           Get-FileHash setup_output\\InfoScraper-Setup.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  InfoScraper-Setup.zip" } | Out-File setup_output\\SHA256SUMS.txt -Append -Encoding ascii
+          Get-FileHash setup_output\\InfoScraper-Setup.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  InfoScraper-Setup.exe" } | Out-File setup_output\\SHA256SUMS.txt -Append -Encoding ascii
       - name: Verify release files
         shell: pwsh
         run: |
           foreach ($f in @('dist\\InfoScraper.exe','setup_output\\InfoScraper-Setup.zip','setup_output\\InfoScraper-Setup.exe','setup_output\\SHA256SUMS.txt')) { if (!(Test-Path $f)) { throw "Missing release file: $f" } }
+          $lines = Get-Content setup_output\\SHA256SUMS.txt
+          foreach ($name in @('InfoScraper.exe','InfoScraper-Setup.zip','InfoScraper-Setup.exe')) { if (-not ($lines -match [regex]::Escape($name))) { throw "Missing checksum for $name" } }
       - uses: softprops/action-gh-release@v2
         with:
           files: |

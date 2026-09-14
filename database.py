@@ -36,6 +36,20 @@ def init_db():
     """)
     conn.execute("CREATE TABLE IF NOT EXISTS scrape_rows (id INTEGER PRIMARY KEY AUTOINCREMENT, record_id INTEGER NOT NULL, row_json TEXT NOT NULL)")
     conn.commit()
+    # Automatically migrate legacy JSON payloads on startup.
+    try:
+        legacy = conn.execute("SELECT id, data_json FROM scrape_records WHERE data_json IS NOT NULL AND data_json != ''").fetchall()
+        for record_id, payload in legacy:
+            try:
+                rows = json.loads(payload)
+                if isinstance(rows, list):
+                    conn.executemany("INSERT INTO scrape_rows (record_id,row_json) VALUES (?,?)", [(record_id, json.dumps(r, ensure_ascii=False)) for r in rows])
+                conn.execute("UPDATE scrape_records SET data_json='' WHERE id=?", (record_id,))
+            except (TypeError, ValueError):
+                continue
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
     try:
         conn.execute("ALTER TABLE proxies ADD COLUMN cooldown_until REAL DEFAULT 0")
         conn.execute("ALTER TABLE proxies ADD COLUMN latency REAL DEFAULT 0")

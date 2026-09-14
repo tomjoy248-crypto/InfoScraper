@@ -288,10 +288,11 @@ class ScraperGUI:
         ttk.Button(proxy_input, text="添加代理", command=self._add_proxy).pack(side=tk.LEFT, padx=2)
         ttk.Button(proxy_input, text="刷新列表", command=self._refresh_proxies).pack(side=tk.LEFT, padx=2)
 
-        self.proxy_tree = ttk.Treeview(proxy_frame, columns=("address", "status", "fail"), show="headings", height=8)
+        self.proxy_tree = ttk.Treeview(proxy_frame, columns=("address", "status", "fail", "latency"), show="headings", height=8)
         self.proxy_tree.heading("address", text="代理地址")
         self.proxy_tree.heading("status", text="状态")
         self.proxy_tree.heading("fail", text="失败次数")
+        self.proxy_tree.heading("latency", text="延迟(秒)")
         self.proxy_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=2)
         btns = tk.Frame(proxy_frame); btns.pack(pady=2)
         ttk.Button(btns, text="删除选中代理", command=self._del_proxy).pack(side=tk.LEFT, padx=2)
@@ -873,7 +874,7 @@ class ScraperGUI:
     def _refresh_proxies(self):
         self.proxy_tree.delete(*self.proxy_tree.get_children())
         for p in list_proxies():
-            self.proxy_tree.insert("", tk.END, values=(p["address"], "启用" if p["enabled"] else "禁用", p["fail_count"]))
+            self.proxy_tree.insert("", tk.END, values=(p["address"], "启用" if p["enabled"] else "禁用", p["fail_count"], f"{p.get('latency', 0):.3f}"))
 
     def _del_proxy(self):
         selected = self.proxy_tree.selection()

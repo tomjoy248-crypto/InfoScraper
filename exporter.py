@@ -1,19 +1,23 @@
 import json
 import os
+import csv
 from typing import List, Dict
 
-import pandas as pd
 from redact import redact
 
 
 def export_csv(data: List[Dict[str, str]], path: str):
-    df = pd.DataFrame(redact(data))
-    df.to_csv(path, index=False, encoding="utf-8-sig")
+    rows = redact(data); fields = list(rows[0].keys()) if rows else []
+    with open(path, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=fields); writer.writeheader(); writer.writerows(rows)
 
 
 def export_excel(data: List[Dict[str, str]], path: str):
-    df = pd.DataFrame(redact(data))
-    df.to_excel(path, index=False, engine="openpyxl")
+    from openpyxl import Workbook
+    rows = redact(data); fields = list(rows[0].keys()) if rows else []
+    wb = Workbook(); ws = wb.active; ws.append(fields)
+    for row in rows: ws.append([row.get(k, "") for k in fields])
+    wb.save(path)
 
 
 def export_json(data: List[Dict[str, str]], path: str):

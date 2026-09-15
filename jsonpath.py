@@ -74,7 +74,8 @@ def _walk(node: Any, tokens: List[str]) -> List[Any]:
                             raise JSONPathError(f"非法索引: {index_tok}")
                 elif isinstance(item, dict):
                     # 形如 obj[key] 的对象键访问
-                    new_current.append(item.get(index_tok))
+                    if index_tok in item:
+                        new_current.append(item[index_tok])
             current = new_current
             continue
 

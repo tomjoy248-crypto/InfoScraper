@@ -14,6 +14,7 @@ class Job:
         self.callback = callback
         self.next_run = datetime.now() + timedelta(minutes=interval_minutes)
         self.enabled = True
+        self.running = False
 
 
 class InAppScheduler:
@@ -48,6 +49,11 @@ class InAppScheduler:
                 if int(item.get("interval", 0)) < 1:
                     continue
                 self.add_job(item["id"], item["task"], int(item["interval"]), callback_factory(item["task"]))
+                job = self.jobs[item["id"]]
+                if item.get("next_run"):
+                    try: job.next_run = datetime.fromisoformat(item["next_run"])
+                    except ValueError: pass
+                job.enabled = bool(item.get("enabled", True))
             return len(self.jobs)
         except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
             self._log(f"定时任务加载失败: {exc}")
@@ -101,11 +107,14 @@ class InAppScheduler:
             with self._lock:
                 jobs_snapshot = list(self.jobs.values())
             for job in jobs_snapshot:
-                if job.enabled and now >= job.next_run:
+                if job.enabled and not job.running and now >= job.next_run:
+                    job.running = True
                     job.next_run = now + timedelta(minutes=job.interval_minutes)
                     self._log(f"执行定时任务 '{job.job_id}'")
                     try:
                         job.callback(job.task)
                     except Exception as e:
                         self._log(f"定时任务 '{job.job_id}' 执行失败: {e}")
+                    finally:
+                        job.running = False
             time.sleep(5)

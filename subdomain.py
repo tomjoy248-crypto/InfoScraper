@@ -6,6 +6,7 @@ import urllib.parse
 import urllib.request
 import re
 import uuid
+from pathlib import Path
 from typing import Callable, List, Optional, Set
 
 
@@ -189,3 +190,8 @@ def collect_subdomains(
                         item["来源"] = "crt.sh + DNS爆破"
 
     return all_results
+
+def load_wordlist(path: str) -> List[str]:
+    """Load custom subdomain prefixes, one per line."""
+    return [line.strip().lower() for line in Path(path).read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")]

@@ -83,13 +83,13 @@ def test_real_local_http_fetch():
 def test_real_local_http_static_stream_pipeline():
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            body = b"<html><div class='item'>a</div><div class='item'>b</div></html>"
+            body = b"<html><div class='item'><span>a</span></div><div class='item'><span>b</span></div></html>"
             self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
         def log_message(self, *_): pass
     server = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     scraper = WebScraper(f"http://127.0.0.1:{server.server_port}")
     with patch.object(scraper, "_validate_url"):
-        rows = list(scraper.iter_run(".item", [{"name": "value"}], max_pages=1))
+        rows = list(scraper.iter_run(".item", [{"name": "value", "selector": "span"}], max_pages=1))
     server.shutdown()
     assert [r["value"] for r in rows] == ["a", "b"]

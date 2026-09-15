@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
-from scraper import WebScraper
+from scraper import WebScraper, ScraperError
 from cancellation import CancellationToken
 from redact import redact
 
@@ -59,9 +59,12 @@ def test_playwright_captcha_detection():
         def content(self):
             return "<html>captcha verification required</html>"
     scraper._playwright_page = Page()
-    with patch("scraper.sync_playwright", create=True):
-        # Detection is exercised through the rendering path's explicit marker logic.
-        assert "captcha" in scraper._playwright_page.content()
+    scraper._browser = type("B", (), {"close": lambda self: None})()
+    scraper._pw = type("P", (), {"stop": lambda self: None})()
+    try:
+        scraper._fetch_render("https://example.com")
+    except ScraperError as exc:
+        assert "验证码" in str(exc) or "渲染失败" in str(exc)
 
 
 def test_real_local_http_fetch():

@@ -7,6 +7,7 @@ import time
 import urllib.parse
 import ipaddress
 import socket
+import urllib.robotparser
 import checkpoint
 from cancellation import CancellationToken
 from typing import Any, Callable, Dict, List, Optional
@@ -52,6 +53,7 @@ class WebScraper:
         api_config: Optional[Dict[str, Any]] = None,
         checkpoint_path: Optional[str] = None,
         cancellation_token: Optional[CancellationToken] = None,
+        respect_robots: bool = False,
         login_handler: Optional[Callable[[Any], bool]] = None,
     ):
         self.start_url = start_url
@@ -70,6 +72,7 @@ class WebScraper:
         self.checkpoint_path = checkpoint_path
         self.cancellation_token = cancellation_token or CancellationToken()
         self.login_handler = login_handler
+        self.respect_robots = respect_robots
         self._resolved_hosts: Dict[str, str] = {}
         if self.checkpoint_path:
             os.makedirs(os.path.dirname(self.checkpoint_path) or ".", exist_ok=True)
@@ -145,6 +148,12 @@ class WebScraper:
                 return
 
     def _fetch(self, url: str, method: str = "GET", payload: Optional[Dict] = None) -> str:
+        if self.respect_robots and method.upper() == "GET":
+            rp = urllib.robotparser.RobotFileParser(urllib.parse.urljoin(url, "/robots.txt"))
+            try: rp.read()
+            except Exception: pass
+            if not rp.can_fetch(self.session.headers.get("User-Agent", "*"), url):
+                raise ScraperError("robots.txt 禁止采集该 URL")
         if self._should_stop():
             raise ScraperError("请求已取消")
         self._validate_url(url)

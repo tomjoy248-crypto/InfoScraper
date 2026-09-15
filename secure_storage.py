@@ -15,22 +15,6 @@ logger = logging.getLogger(__name__)
 _IS_WINDOWS = sys.platform.startswith("win")
 
 
-def _blob(data: bytes):
-    """构造 Windows DATA_BLOB 结构。"""
-    class DATA_BLOB:
-        _fields_ = [("cbData", "uint32"), ("pbData", "pointer")]
-
-    import ctypes
-
-    blob = DATA_BLOB()
-    blob.cbData = len(data)
-    if data:
-        blob.pbData = ctypes.cast(ctypes.create_string_buffer(data), ctypes.c_void_p)
-    else:
-        blob.pbData = None
-    return blob
-
-
 def encrypt(value: Optional[str]) -> Optional[str]:
     """加密字符串，返回 base64 编码的 token；输入为空则直接返回空。"""
     if not value:

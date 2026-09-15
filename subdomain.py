@@ -5,6 +5,7 @@ import time
 import urllib.parse
 import urllib.request
 import re
+import uuid
 from typing import Callable, List, Optional, Set
 
 
@@ -62,6 +63,11 @@ def brute_subdomains(
 ) -> List[dict]:
     """使用字典爆破收集子域名。"""
     words = wordlist or DEFAULT_WORDLIST
+    # Detect wildcard DNS before brute force to avoid reporting every word.
+    wildcard = dns_resolve(f"{uuid.uuid4().hex}.{domain}", timeout)
+    if wildcard:
+        if on_log: on_log("检测到泛解析，跳过 DNS 字典爆破以避免误报")
+        return []
     threads = max(1, min(int(threads), 100))
     found: Set[str] = set()
     results: List[dict] = []

@@ -93,13 +93,22 @@ def save_record_stream(task_name: str, start_url: str, rows, batch_size: int = 5
     cur = conn.execute("INSERT INTO scrape_records (task_name,start_url,total_count,created_at,data_json) VALUES (?,?,?,?,NULL)",
                        (task_name or "未命名", start_url, 0, datetime.now().isoformat()))
     record_id = cur.lastrowid; count = 0; batch = []
-    for row in rows:
-        batch.append((record_id, json.dumps(row, ensure_ascii=False))); count += 1
-        if len(batch) >= batch_size:
-            conn.executemany("INSERT INTO scrape_rows (record_id,row_json) VALUES (?,?)", batch); conn.commit(); batch.clear()
-    if batch: conn.executemany("INSERT INTO scrape_rows (record_id,row_json) VALUES (?,?)", batch)
-    conn.execute("UPDATE scrape_records SET total_count=? WHERE id=?", (count, record_id)); conn.commit(); conn.close()
-    return record_id
+    try:
+        for row in rows:
+            batch.append((record_id, json.dumps(row, ensure_ascii=False))); count += 1
+            if len(batch) >= batch_size:
+                conn.executemany("INSERT INTO scrape_rows (record_id,row_json) VALUES (?,?)", batch); batch.clear()
+        if batch: conn.executemany("INSERT INTO scrape_rows (record_id,row_json) VALUES (?,?)", batch)
+        conn.execute("UPDATE scrape_records SET total_count=? WHERE id=?", (count, record_id)); conn.commit()
+        return record_id
+    except Exception:
+        conn.rollback()
+        conn.execute("DELETE FROM scrape_rows WHERE record_id=?", (record_id,))
+        conn.execute("DELETE FROM scrape_records WHERE id=?", (record_id,))
+        conn.commit()
+        raise
+    finally:
+        conn.close()
 
 
 def existing_keys(task_name: str, keys: List[str]) -> set:

@@ -8,6 +8,7 @@ import urllib.parse
 import ipaddress
 import socket
 import urllib.robotparser
+import io
 import checkpoint
 from cancellation import CancellationToken
 from typing import Any, Callable, Dict, List, Optional
@@ -24,7 +25,7 @@ USER_AGENT_POOL = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
 ]
 
 
@@ -82,8 +83,10 @@ class WebScraper:
         # requests when the optional native dependency is unavailable.
         try:
             from curl_cffi import requests as curl_requests
-            self.session = curl_requests.Session(impersonate="chrome120")
-        except (ImportError, TypeError):
+            self.session = curl_requests.Session(impersonate="chrome131")
+        except (ImportError, TypeError) as exc:
+            import logging
+            logging.getLogger(__name__).warning("curl_cffi 不可用，降级使用 requests: %s", exc)
             self.session = requests.Session()
         self._update_headers()
         if self.cookies:
@@ -171,10 +174,10 @@ class WebScraper:
                 proxies = self._pick_proxy()
                 if method.upper() == "POST":
                     resp = self.session.post(
-                        url, data=payload, proxies=proxies, timeout=self.timeout, allow_redirects=False
+                        url, data=payload, proxies=proxies, timeout=self.timeout, allow_redirects=False, stream=True
                     )
                 else:
-                    resp = self.session.get(url, proxies=proxies, timeout=self.timeout, allow_redirects=False)
+                    resp = self.session.get(url, proxies=proxies, timeout=self.timeout, allow_redirects=False, stream=True)
                 resp.raise_for_status()
                 if self._should_stop():
                     raise ScraperError("请求已取消")
@@ -262,7 +265,7 @@ class WebScraper:
                         url,
                         headers=req_headers,
                         proxies=proxies,
-                        timeout=self.timeout, allow_redirects=False,
+                        timeout=self.timeout, allow_redirects=False, stream=True,
                     )
                 resp.raise_for_status()
                 if self._should_stop():
@@ -290,7 +293,11 @@ class WebScraper:
         """Stream a JSON array from a requests response when ijson is available."""
         try:
             import ijson
-            yield from ijson.items(response.raw, prefix)
+            raw = getattr(response, "raw", None)
+            if raw is None:
+                content = getattr(response, "content", b"")
+                raw = io.BytesIO(content)
+            yield from ijson.items(raw, prefix)
         except ImportError:
             data = response.json()
             yield from (data if isinstance(data, list) else [])

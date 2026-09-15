@@ -64,8 +64,10 @@ def brute_subdomains(
     """使用字典爆破收集子域名。"""
     words = wordlist or DEFAULT_WORDLIST
     # Detect wildcard DNS before brute force to avoid reporting every word.
-    wildcard = dns_resolve(f"{uuid.uuid4().hex}.{domain}", timeout)
-    if wildcard and on_log: on_log(f"检测到泛解析基线 {wildcard}，将过滤同 IP 命中")
+    probes = {dns_resolve(f"{uuid.uuid4().hex}.{domain}", timeout) for _ in range(3)}
+    probes.discard(None)
+    wildcard = next(iter(probes)) if len(probes) == 1 else None
+    if wildcard and on_log: on_log(f"检测到稳定泛解析基线 {wildcard}，将过滤同 IP 命中")
     threads = max(1, min(int(threads), 100))
     found: Set[str] = set()
     results: List[dict] = []

@@ -18,7 +18,11 @@ jobs:
 
   build-windows:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
     needs: test
     steps:
       - uses: actions/checkout@v4

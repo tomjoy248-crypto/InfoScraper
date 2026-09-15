@@ -53,7 +53,7 @@ class WebScraper:
         api_config: Optional[Dict[str, Any]] = None,
         checkpoint_path: Optional[str] = None,
         cancellation_token: Optional[CancellationToken] = None,
-        respect_robots: bool = False,
+        respect_robots: bool = True,
         login_handler: Optional[Callable[[Any], bool]] = None,
     ):
         self.start_url = start_url

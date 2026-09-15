@@ -366,6 +366,8 @@ class ScraperGUI:
         self.subdomain_domain_var = tk.StringVar()
         tk.Entry(input_f, textvariable=self.subdomain_domain_var, width=40).pack(side=tk.LEFT, padx=5)
         ttk.Button(input_f, text="开始收集", command=self._start_subdomain).pack(side=tk.LEFT, padx=5)
+        self.subdomain_wordlist_var = tk.StringVar()
+        ttk.Button(input_f, text="加载词典", command=self._choose_subdomain_wordlist).pack(side=tk.LEFT, padx=5)
 
         opts = tk.Frame(parent)
         opts.pack(fill=tk.X, padx=5, pady=2)
@@ -406,13 +408,20 @@ class ScraperGUI:
         )
         thread.start()
 
+    def _choose_subdomain_wordlist(self):
+        path = filedialog.askopenfilename(filetypes=[("文本词典", "*.txt"), ("所有文件", "*.*")])
+        if path:
+            self.subdomain_wordlist_var.set(path)
+
     def _subdomain_worker(self, domain: str):
         try:
+            from subdomain import load_wordlist
+            words = load_wordlist(self.subdomain_wordlist_var.get()) if self.subdomain_wordlist_var.get() else None
             data = collect_subdomains(
                 domain=domain,
                 enable_brute=self.subdomain_brute_var.get(),
                 enable_crtsh=self.subdomain_crtsh_var.get(),
-                threads=self.subdomain_threads_var.get(),
+                threads=self.subdomain_threads_var.get(), wordlist=words,
                 timeout=2.0,
                 on_progress=lambda cur, total: self.root.after(0, lambda: self._update_progress(cur, total)),
                 on_log=lambda msg: self.root.after(0, lambda: self._log(msg)),

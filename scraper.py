@@ -241,39 +241,31 @@ class WebScraper:
                 page_key = cfg.get("request_page_param")
                 if page_key and isinstance(request_body, dict):
                     request_body[page_key] = cfg.get("request_page_value", 1)
+                request_options = {"headers": req_headers, "proxies": proxies, "timeout": self.timeout, "allow_redirects": False}
+                if cfg.get("stream_prefix"):
+                    request_options["stream"] = True
                 if method == "POST":
                     if body_type == "json":
                         req_headers.setdefault("Content-Type", "application/json")
                         resp = self.session.post(
                             url,
-                            headers=req_headers,
-                            json=request_body,
-                            proxies=proxies,
-                            timeout=self.timeout, allow_redirects=False,
+                            json=request_body, **request_options,
                         )
                     else:
                         req_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
                         resp = self.session.post(
                             url,
-                            headers=req_headers,
-                            data=request_body,
-                            proxies=proxies,
-                            timeout=self.timeout, allow_redirects=False,
+                            data=request_body, **request_options,
                         )
                 else:
-                    resp = self.session.get(
-                        url,
-                        headers=req_headers,
-                        proxies=proxies,
-                        timeout=self.timeout, allow_redirects=False, stream=True,
-                    )
+                    resp = self.session.get(url, **request_options)
                 resp.raise_for_status()
                 if self._should_stop():
                     raise ScraperError("请求已取消")
                 if cfg.get("stream_prefix"):
                     return list(self.iter_json_response(resp, cfg["stream_prefix"]))
                 return resp.json()
-            except requests.RequestException as e:
+            except Exception as e:
                 last_error = e
                 if self.proxy_single and attempt == self.retries:
                     self.proxy_single = None
@@ -295,9 +287,17 @@ class WebScraper:
             import ijson
             raw = getattr(response, "raw", None)
             if raw is None:
-                content = getattr(response, "content", b"")
+                chunks = getattr(response, "iter_content", None)
+                if chunks:
+                    content = b"".join(chunks(chunk_size=65536))
+                else:
+                    content = getattr(response, "content", b"") or b""
                 raw = io.BytesIO(content)
-            yield from ijson.items(raw, prefix)
+            try:
+                yield from ijson.items(raw, prefix)
+            finally:
+                close = getattr(response, "close", None)
+                if close: close()
         except ImportError:
             data = response.json()
             yield from (data if isinstance(data, list) else [])

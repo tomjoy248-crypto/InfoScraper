@@ -3,6 +3,7 @@ import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import time
+import uuid
 import tkinter as tk
 from tkinter import messagebox, ttk, scrolledtext, filedialog
 
@@ -47,6 +48,7 @@ class ScraperGUI:
         self.scheduler.on_log = lambda msg: self.root.after(0, lambda: self._log(msg))
         self.scheduler.start()
         self.start_time = None
+        self._scheduled_running = set()
 
         init_db()
         self._build_ui()
@@ -415,6 +417,7 @@ class ScraperGUI:
 
     def _subdomain_worker(self, domain: str):
         try:
+            self.current_record_id = None
             from subdomain import load_wordlist
             words = load_wordlist(self.subdomain_wordlist_var.get()) if self.subdomain_wordlist_var.get() else None
             data = collect_subdomains(
@@ -930,23 +933,31 @@ class ScraperGUI:
         interval = self.schedule_interval_var.get()
         task = self._collect_task_config()
         task["task_name"] = name
-        job_id = f"{name}_{id(task)}"
+        job_id = f"{name}_{uuid.uuid4().hex[:8]}"
 
         def callback(t):
+            if job_id in self._scheduled_running:
+                self.root.after(0, lambda: self._log(f"定时任务跳过重叠执行: {name}"))
+                return
+            self._scheduled_running.add(job_id)
             self.root.after(0, lambda: self._log(f"定时任务触发: {name}"))
-            thread = threading.Thread(target=lambda: self._run_scheduled_task(t), daemon=True)
+            def run():
+                try: self._run_scheduled_task(t)
+                finally: self._scheduled_running.discard(job_id)
+            thread = threading.Thread(target=run, daemon=True)
             thread.start()
 
         if self.scheduler.add_job(job_id, task, interval, callback):
             self._refresh_schedules()
 
     def _run_scheduled_task(self, task: dict):
+        scraper = None
         try:
             proxies = [p["address"] for p in list_proxies() if p["enabled"]]
             scraper = WebScraper(
                 start_url=task["url"],
                 mode=task.get("mode", "static"),
-                headers={"User-Agent": task.get("ua", "")},
+                headers={"User-Agent": task.get("ua")} if task.get("ua") else {},
                 cookies=task.get("cookie") or None,
                 delay=task.get("delay", 0.5),
                 delay_random=task.get("delay_random", True),
@@ -968,7 +979,6 @@ class ScraperGUI:
                 on_progress=lambda p, total: self.root.after(0, lambda: self._log(f"定时任务 第{p}页 累计{total}条")),
                 on_log=lambda msg: self.root.after(0, lambda: self._log(f"[定时] {msg}")),
             )
-            scraper.close()
             if task.get("clean_rules"):
                 data = apply_clean_rules(data, task["clean_rules"])
             if task.get("dedup"):
@@ -979,6 +989,9 @@ class ScraperGUI:
             self.root.after(0, self._refresh_history)
         except Exception as e:
             self.root.after(0, lambda: self._log(f"定时任务失败: {e}"))
+        finally:
+            if scraper is not None:
+                scraper.close()
 
     def _refresh_schedules(self):
         self.schedule_tree.delete(*self.schedule_tree.get_children())

@@ -21,7 +21,6 @@ import jsonpath
 
 
 USER_AGENT_POOL = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
@@ -183,6 +182,8 @@ class WebScraper:
                     raise ScraperError("请求已取消")
                 return resp.text
             except Exception as e:
+                if isinstance(e, ScraperError):
+                    raise
                 last_error = e
                 if self.random_ua:
                     self._update_headers()
@@ -265,7 +266,11 @@ class WebScraper:
                 if cfg.get("stream_prefix"):
                     return list(self.iter_json_response(resp, cfg["stream_prefix"]))
                 return resp.json()
+            except ValueError as e:
+                raise ScraperError(f"API 响应不是有效 JSON: {e}") from e
             except Exception as e:
+                if isinstance(e, ScraperError):
+                    raise
                 last_error = e
                 if self.proxy_single and attempt == self.retries:
                     self.proxy_single = None
@@ -276,8 +281,6 @@ class WebScraper:
                     self._update_headers()
                 if attempt < self.retries:
                     time.sleep(random.uniform(1, 3))
-            except ValueError as e:
-                raise ScraperError(f"API 响应不是有效 JSON: {e}")
         raise ScraperError(f"API 请求失败（重试 {self.retries} 次）: {last_error}")
 
     @staticmethod

@@ -10,7 +10,9 @@ DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scraper.db")
 
 
 def _get_conn():
-    return sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=15)
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
 
 
 def init_db():

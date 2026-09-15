@@ -33,7 +33,7 @@
 ### 安装依赖
 
 ```bash
-cd info_scraper
+cd SL-crawler-
 pip install -r requirements.txt
 ```
 
@@ -75,7 +75,7 @@ python main.py
 ## 项目结构
 
 ```
-info_scraper/
+SL-crawler-/
 ├── main.py           # 程序入口
 ├── gui.py            # 桌面界面（含标签页）
 ├── scraper.py        # 爬虫核心（反爬、翻页、渲染）
@@ -89,12 +89,16 @@ info_scraper/
 ├── subdomain.py      # 子域名收集
 ├── config.py         # 任务配置管理
 ├── requirements.txt  # 依赖
+├── scraper.py        # 采集引擎
+├── gui.py            # 图形界面
+├── database.py       # SQLite 存储
 └── README.md         # 说明
 ```
 
 ## 注意事项
 
-- 请遵守目标网站的 robots.txt 和相关法律法规。
+- 可启用 `respect_robots=True` 强制检查 robots.txt；请遵守网站条款和相关法律法规。
+- 项目采用 MIT License，详见 LICENSE。
 - 不要高频请求，合理设置翻页延迟。
 - 登录态信息请通过 Cookie 传入，注意保护隐私。
 - 代理地址格式：`http://ip:port` 或 `https://ip:port`。

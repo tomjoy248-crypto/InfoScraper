@@ -38,6 +38,11 @@ DEFAULT_WORDLIST = [
     "webrtc", "turn", "stun", "voip", "pbx", "sip",
     "cn", "hk", "us", "eu", "asia", "global", "intl",
     "east", "west", "north", "south", "bj", "sh", "sz", "gz",
+    "origin", "edge", "edge1", "edge2", "gateway", "router", "proxy",
+    "jira", "redmine", "youtrack", "bitrix", "crm", "erp", "hr", "finance",
+    "gitlab-ci", "runner", "registry", "docker", "k8s", "kubernetes", "vault",
+    "terraform", "ansible", "salt", "puppet", "sentry", "airflow", "superset",
+    "jupyter", "notebook", "ml", "model", "research", "lab", "sandbox2",
 ]
 
 

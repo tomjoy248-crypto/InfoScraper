@@ -174,10 +174,10 @@ class WebScraper:
                 proxies = self._pick_proxy()
                 if method.upper() == "POST":
                     resp = self.session.post(
-                        url, data=payload, proxies=proxies, timeout=self.timeout, allow_redirects=False, stream=True
+                        url, data=payload, proxies=proxies, timeout=self.timeout, allow_redirects=False
                     )
                 else:
-                    resp = self.session.get(url, proxies=proxies, timeout=self.timeout, allow_redirects=False, stream=True)
+                    resp = self.session.get(url, proxies=proxies, timeout=self.timeout, allow_redirects=False)
                 resp.raise_for_status()
                 if self._should_stop():
                     raise ScraperError("请求已取消")

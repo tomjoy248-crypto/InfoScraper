@@ -605,13 +605,14 @@ class ScraperGUI:
         thread.start()
 
     def _scrape_worker(self):
+        scraper = None
         try:
             proxies = [p["address"] for p in list_proxies() if p["enabled"]]
             task = self._collect_task_config()
             scraper = WebScraper(
                 start_url=self.url_var.get().strip(),
                 mode=self.mode_var.get(),
-                headers={"User-Agent": self.ua_var.get().strip()},
+                headers={"User-Agent": self.ua_var.get().strip()} if self.ua_var.get().strip() else {},
                 cookies=self.cookie_var.get().strip() or None,
                 delay=self.delay_var.get(),
                 delay_random=self.delay_random_var.get(),
@@ -648,14 +649,16 @@ class ScraperGUI:
                     if len(self.raw_data) < 100:
                         self.raw_data.append(row)
                     yield row
-            processed = []
+            processed = []; processed_count = 0
             def processed_rows():
+                nonlocal processed_count
                 for row in process_rows(stream_rows(), self.clean_rules, dedup_fields if self.dedup_var.get() else None, known):
+                    processed_count += 1
                     if len(processed) < 100:
                         processed.append(row)
                     yield row
             record_id = save_record_stream(self.task_name_var.get().strip(), self.url_var.get().strip(), processed_rows())
-            scraper.close()
+            self.current_record_id = record_id
             if self.clean_rules:
                 self.root.after(0, lambda: self._log(f"已应用清洗规则: {len(self.clean_rules)} 个字段"))
             if self.dedup_var.get() or self.incremental_var.get():
@@ -664,7 +667,8 @@ class ScraperGUI:
             self.result_data = processed
             self.root.after(0, self._show_results)
             elapsed = round(time.time() - self.start_time, 2)
-            self.root.after(0, lambda: self._update_stat(raw_count, len(processed), elapsed))
+            self.root.after(0, lambda: self._update_stat(raw_count, processed_count, elapsed))
+            self.result_count = processed_count
 
             # 自动保存到数据库
             self.root.after(0, lambda: self._log(f"已保存到历史记录，ID: {record_id}"))
@@ -672,6 +676,9 @@ class ScraperGUI:
         except Exception as e:
             self.root.after(0, lambda: self._log(f"错误: {e}"))
             self.root.after(0, lambda: self.status_var.set("采集失败"))
+        finally:
+            if scraper is not None:
+                scraper.close()
 
     def _update_progress(self, page: int, total: int):
         self.progress["value"] = min(page / self.max_pages_var.get() * 100, 100)
@@ -682,10 +689,11 @@ class ScraperGUI:
         self.stat_var.set(f"原始: {raw} | 去重后: {deduped} | 耗时: {elapsed}s")
 
     def _show_results(self):
-        self.status_var.set(f"采集完成，共 {len(self.result_data)} 条")
-        self._log(f"采集完成，共 {len(self.result_data)} 条")
+        total = getattr(self, "result_count", len(self.result_data))
+        self.status_var.set(f"采集完成，共 {total} 条")
+        self._log(f"采集完成，共 {total} 条（预览前100条）")
         self.result_tree.delete(*self.result_tree.get_children())
-        if not self.result_data:
+        if not self.result_data and not getattr(self, "current_record_id", None):
             return
         cols = list(self.result_data[0].keys())
         self.result_tree["columns"] = cols
@@ -706,7 +714,8 @@ class ScraperGUI:
         if not path:
             return
         try:
-            export(self.result_data, path)
+            data = get_record(int(self.current_record_id))["data"] if getattr(self, "current_record_id", None) else self.result_data
+            export(data, path)
             messagebox.showinfo("完成", f"已导出到: {path}")
             self._log(f"导出成功: {path}")
         except Exception as e:

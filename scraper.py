@@ -74,6 +74,7 @@ class WebScraper:
         self.login_handler = login_handler
         self.respect_robots = respect_robots
         self._resolved_hosts: Dict[str, str] = {}
+        self._robots_cache = {}
         if self.checkpoint_path:
             os.makedirs(os.path.dirname(self.checkpoint_path) or ".", exist_ok=True)
         self._cancelled = False
@@ -157,9 +158,13 @@ class WebScraper:
 
     def _fetch(self, url: str, method: str = "GET", payload: Optional[Dict] = None) -> str:
         if self.respect_robots and method.upper() == "GET":
-            rp = urllib.robotparser.RobotFileParser(urllib.parse.urljoin(url, "/robots.txt"))
-            try: rp.read()
-            except Exception: pass
+            robots_url = urllib.parse.urljoin(url, "/robots.txt")
+            rp = self._robots_cache.get(robots_url)
+            if rp is None:
+                rp = urllib.robotparser.RobotFileParser(robots_url)
+                try: rp.read()
+                except Exception: pass
+                self._robots_cache[robots_url] = rp
             if not rp.can_fetch(self.session.headers.get("User-Agent", "*"), url):
                 raise ScraperError("robots.txt 禁止采集该 URL")
         if self._should_stop():

@@ -44,10 +44,11 @@ def pick_selector(url: str) -> Dict[str, str]:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(url, wait_until="networkidle")
+        try:
+            page.goto(url, wait_until="domcontentloaded")
 
-        # 注入选择脚本，点击元素后返回元素信息
-        page.evaluate("""
+            # 注入选择脚本，点击元素后返回元素信息
+            page.evaluate("""
             window._picked = null;
             document.addEventListener('mouseover', function(e) {
                 if (window._picked) return;
@@ -69,15 +70,15 @@ def pick_selector(url: str) -> Dict[str, str]:
                 };
                 window._picked = info;
             }, true);
-        """)
+            """)
 
         # 最多等待 5 分钟
-        for _ in range(600):
-            picked = page.evaluate("window._picked")
-            if picked:
-                result = generate_selector(picked)
-                break
-            time.sleep(0.5)
-
-        browser.close()
+            for _ in range(600):
+                picked = page.evaluate("window._picked")
+                if picked:
+                    result = generate_selector(picked)
+                    break
+                time.sleep(0.5)
+        finally:
+            browser.close()
     return result

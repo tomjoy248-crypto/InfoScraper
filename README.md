@@ -89,9 +89,6 @@ SL-crawler-/
 ├── subdomain.py      # 子域名收集
 ├── config.py         # 任务配置管理
 ├── requirements.txt  # 依赖
-├── scraper.py        # 采集引擎
-├── gui.py            # 图形界面
-├── database.py       # SQLite 存储
 └── README.md         # 说明
 ```
 

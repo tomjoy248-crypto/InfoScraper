@@ -78,7 +78,13 @@ class WebScraper:
             os.makedirs(os.path.dirname(self.checkpoint_path) or ".", exist_ok=True)
         self._cancelled = False
         self._on_row: Optional[Callable[[Dict[str, str]], None]] = None
-        self.session = requests.Session()
+        # Prefer curl_cffi for browser-like TLS fingerprints; fall back to
+        # requests when the optional native dependency is unavailable.
+        try:
+            from curl_cffi import requests as curl_requests
+            self.session = curl_requests.Session(impersonate="chrome120")
+        except (ImportError, TypeError):
+            self.session = requests.Session()
         self._update_headers()
         if self.cookies:
             self.session.cookies.update(self.cookies)

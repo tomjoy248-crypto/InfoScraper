@@ -22,9 +22,9 @@ import jsonpath
 
 USER_AGENT_POOL = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.86 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.85 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.84 Safari/537.36",
 ]
 
 
@@ -269,8 +269,17 @@ class WebScraper:
             except ValueError as e:
                 raise ScraperError(f"API 响应不是有效 JSON: {e}") from e
             except Exception as e:
+                try:
+                    import ijson
+                    if isinstance(e, ijson.JSONError):
+                        raise ScraperError(f"API 流式响应不是有效 JSON: {e}") from e
+                except ImportError:
+                    pass
                 if isinstance(e, ScraperError):
                     raise
+                last_error = e
+                if attempt < self.retries:
+                    self._sleep_interruptibly(random.uniform(1, 3))
                 last_error = e
                 if self.proxy_single and attempt == self.retries:
                     self.proxy_single = None

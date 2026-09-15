@@ -64,7 +64,8 @@ def test_playwright_captcha_detection():
     try:
         scraper._fetch_render("https://example.com")
     except ScraperError as exc:
-        assert "验证码" in str(exc) or "渲染失败" in str(exc)
+        assert "渲染失败" in str(exc)
+        assert "检测到验证码页面" in str(exc.__cause__)
 
 
 def test_real_local_http_fetch():

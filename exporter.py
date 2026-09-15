@@ -29,8 +29,10 @@ def export(data: List[Dict[str, str]], path: str):
     ext = os.path.splitext(path)[1].lower()
     if ext == ".csv":
         export_csv(data, path)
-    elif ext in (".xlsx", ".xls"):
+    elif ext == ".xlsx":
         export_excel(data, path)
+    elif ext == ".xls":
+        raise ValueError("不支持旧式 .xls，请改用 .xlsx 或 .csv")
     elif ext == ".json":
         export_json(data, path)
     else:

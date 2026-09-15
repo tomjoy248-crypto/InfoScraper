@@ -13,7 +13,7 @@
 import re
 from typing import Any, List, Optional
 
-_TOKEN_RE = re.compile(r"\.|\[|\]|\*|[0-9]+|[a-zA-Z_][a-zA-Z0-9_]*")
+_TOKEN_RE = re.compile(r"\.|\[|\]|\*|[0-9]+|[\w\-]+", re.UNICODE)
 
 
 class JSONPathError(Exception):
@@ -29,6 +29,11 @@ def _tokenize(path: str) -> List[str]:
     elif path.startswith("$"):
         path = path[1:]
     tokens = _TOKEN_RE.findall(path)
+    # Reject silently discarded characters (the old parser lost Chinese and
+    # hyphenated keys without reporting an error).
+    cleaned = _TOKEN_RE.sub("", path).replace(" ", "")
+    if cleaned:
+        raise JSONPathError(f"无法解析的 JSONPath 字符: {cleaned}")
     return tokens
 
 

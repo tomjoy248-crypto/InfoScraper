@@ -50,3 +50,13 @@ jobs:
             setup_output/InfoScraper-Setup.zip
             setup_output/InfoScraper-Setup.exe
             setup_output/SHA256SUMS.txt
+      - name: Verify published release metadata
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $release = gh release view $env:GITHUB_REF_NAME --json assets --repo $env:GITHUB_REPOSITORY | ConvertFrom-Json
+          $names = @($release.assets | ForEach-Object { $_.name })
+          foreach ($name in @('InfoScraper.exe','InfoScraper-Setup.zip','InfoScraper-Setup.exe','SHA256SUMS.txt')) {
+            if ($names -notcontains $name) { throw "Published asset missing: $name" }
+          }

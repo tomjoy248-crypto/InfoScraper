@@ -271,7 +271,7 @@ class WebScraper:
                 if self._should_stop():
                     raise ScraperError("请求已取消")
                 if cfg.get("stream_prefix"):
-                    return list(self.iter_json_response(resp, cfg["stream_prefix"]))
+                    return self.iter_json_response(resp, cfg["stream_prefix"])
                 return resp.json()
             except ValueError as e:
                 raise ScraperError(f"API 响应不是有效 JSON: {e}") from e
@@ -574,12 +574,21 @@ class WebScraper:
                 step = cfg.get("pagination_step", 1) if ptype == "param" else cfg.get("offset_step", 20)
                 cfg["request_page_value"] = (1 if ptype == "param" else 0) + (page - 1) * step
             data = self._fetch_api(url)
-            for row in self.parse_api_items(data, list_selector, fields):
-                total += 1; yield row
+            if cfg.get("stream_prefix"):
+                for item in data:
+                    if self._should_stop(): break
+                    for row in self.parse_api_items([item], "$", fields):
+                        total += 1; yield row
+                data = None
+            else:
+                for row in self.parse_api_items(data, list_selector, fields):
+                    total += 1; yield row
             if self.checkpoint_path: checkpoint.save(self.checkpoint_path, {"page": page, "url": url, "count": total})
             if on_progress: on_progress(page, total)
             if page >= max_pages: break
             path = cfg.get("next_url_path"); cpath = cfg.get("cursor_path")
+            if data is None and (path or cpath):
+                break
             if path:
                 vals = jsonpath.query(data, path)
                 if not vals or not vals[0]: break
@@ -698,7 +707,12 @@ class WebScraper:
             elif pagination_type == "offset":
                 self.api_config["request_page_value"] = offset_start + (page - 1) * offset_step
             data = self._fetch_api(current_url)
-            rows = self.parse_api_items(data, list_selector, fields)
+            if cfg.get("stream_prefix"):
+                rows = []
+                for item in data:
+                    rows.extend(self.parse_api_items([item], "$", fields))
+            else:
+                rows = self.parse_api_items(data, list_selector, fields)
             self._emit_rows(rows, all_results)
             if self.checkpoint_path:
                 checkpoint.save(self.checkpoint_path, {"page": page, "url": current_url, "count": len(all_results)})

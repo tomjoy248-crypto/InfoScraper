@@ -22,3 +22,18 @@ def test_scheduler_running_flag_blocks_overlap(tmp_path):
     scheduler._running = True
     scheduler._running = False
     assert calls == []
+
+def test_scheduler_long_callback_does_not_overlap(tmp_path):
+    scheduler = InAppScheduler(str(tmp_path / "long.json"))
+    calls = []
+    def callback(_):
+        calls.append("start")
+        time.sleep(0.15)
+        calls.append("end")
+    scheduler.add_job("job", {}, 1, callback)
+    job = scheduler.jobs["job"]
+    job.next_run = job.next_run.replace(year=2000)
+    scheduler._running = True
+    thread = __import__("threading").Thread(target=scheduler._loop, daemon=True)
+    thread.start(); time.sleep(0.25); scheduler.stop(); thread.join(timeout=1)
+    assert calls.count("start") == 1

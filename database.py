@@ -2,6 +2,7 @@ import json
 import sqlite3
 import os
 import time
+import secure_storage
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -213,7 +214,7 @@ def add_proxy(address: str):
     try:
         conn.execute(
             "INSERT INTO proxies (address, added_at) VALUES (?, ?)",
-            (address, datetime.now().isoformat()),
+            (secure_storage.encrypt(address), datetime.now().isoformat()),
         )
         conn.commit()
     except sqlite3.IntegrityError:
@@ -227,7 +228,7 @@ def list_proxies() -> List[Dict[str, Any]]:
     conn.execute("UPDATE proxies SET enabled=1, cooldown_until=0 WHERE enabled=0 AND cooldown_until > 0 AND cooldown_until <= ?", (time.time(),))
     conn.commit()
     cur = conn.execute("SELECT address, enabled, fail_count, latency, cooldown_until FROM proxies ORDER BY enabled DESC, (CASE WHEN latency=0 THEN 999999 ELSE latency END) * (1 + fail_count * 0.25) ASC, id DESC")
-    rows = [{"address": r[0], "enabled": bool(r[1]), "fail_count": r[2], "latency": r[3] or 0, "cooldown_until": r[4] or 0} for r in cur.fetchall()]
+    rows = [{"address": secure_storage.decrypt(r[0]), "enabled": bool(r[1]), "fail_count": r[2], "latency": r[3] or 0, "cooldown_until": r[4] or 0} for r in cur.fetchall()]
     conn.close()
     return rows
 
@@ -235,7 +236,7 @@ def list_proxies() -> List[Dict[str, Any]]:
 def delete_proxy(address: str):
     init_db()
     conn = _get_conn()
-    conn.execute("DELETE FROM proxies WHERE address = ?", (address,))
+    conn.execute("DELETE FROM proxies WHERE address = ?", (secure_storage.encrypt(address),))
     conn.commit()
     conn.close()
 
@@ -243,6 +244,6 @@ def delete_proxy(address: str):
 def mark_proxy_fail(address: str):
     init_db()
     conn = _get_conn()
-    conn.execute("UPDATE proxies SET fail_count = fail_count + 1, enabled = CASE WHEN fail_count + 1 >= 3 THEN 0 ELSE enabled END, cooldown_until = CASE WHEN fail_count + 1 >= 3 THEN ? ELSE cooldown_until END WHERE address = ?", (time.time() + 300, address))
+    conn.execute("UPDATE proxies SET fail_count = fail_count + 1, enabled = CASE WHEN fail_count + 1 >= 3 THEN 0 ELSE enabled END, cooldown_until = CASE WHEN fail_count + 1 >= 3 THEN ? ELSE cooldown_until END WHERE address = ?", (time.time() + 300, secure_storage.encrypt(address)))
     conn.commit()
     conn.close()

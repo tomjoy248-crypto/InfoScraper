@@ -60,9 +60,13 @@ def save_task(name: str, task: Dict[str, Any]):
     # 默认不保存 Cookie；如明确选择保存，则加密存储
     if not to_save.get("save_cookie"):
         to_save["cookie"] = ""
-    for key in SENSITIVE_KEYS:
-        if key in to_save and to_save[key]:
-            to_save[key] = secure_storage.encrypt(to_save[key])
+    def protect(value, sensitive=False):
+        if isinstance(value, dict):
+            return {k: protect(v, sensitive=(k in SENSITIVE_KEYS or k == "proxy_pool")) for k, v in value.items()}
+        if isinstance(value, list):
+            return [secure_storage.encrypt(v) if sensitive and isinstance(v, str) else protect(v, sensitive) for v in value]
+        return secure_storage.encrypt(value) if sensitive and isinstance(value, str) else value
+    to_save = protect(to_save)
     # Write and replace atomically so an interruption cannot leave invalid JSON.
     directory = os.path.dirname(path)
     fd, temp_path = tempfile.mkstemp(prefix=".task-", suffix=".json", dir=directory)
@@ -86,7 +90,7 @@ def load_task(name: str) -> Dict[str, Any]:
             try:
                 task[key] = secure_storage.decrypt(task[key])
             except Exception as exc:
-                raise ConfigError("Cookie 解密失败，请在当前 Windows 用户下重新输入 Cookie") from exc
+                raise ConfigError("敏感数据解密失败，请在当前 Windows 用户下重新输入") from exc
     task.setdefault("config_version", 1)
     return task
 

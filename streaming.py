@@ -12,7 +12,9 @@ def process_rows(rows: Iterable[Dict[str, str]], field_rules: Optional[Dict[str,
                 ) -> Iterator[Dict[str, str]]:
     """Clean, filter, and deduplicate rows one at a time with bounded state."""
     rules = field_rules or {}
-    deduper = IncrementalDeduplicator(None) if dedup and not dedup_keys else None
+    # Empty [] means incremental mode was enabled without fields: do not
+    # silently fall back to whole-row deduplication.
+    deduper = IncrementalDeduplicator(None) if dedup and dedup_keys is None else None
     # Copy the caller's set only when absent; when supplied, update it so a
     # single pipeline also suppresses duplicates encountered later in the same
     # run (and makes the contract explicit).

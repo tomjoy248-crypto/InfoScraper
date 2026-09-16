@@ -55,6 +55,7 @@ class WebScraper:
         cancellation_token: Optional[CancellationToken] = None,
         respect_robots: bool = True,
         login_handler: Optional[Callable[[Any], bool]] = None,
+        render_wait_until: str = "domcontentloaded",
     ):
         self.start_url = start_url
         self.mode = mode
@@ -72,6 +73,7 @@ class WebScraper:
         self.checkpoint_path = checkpoint_path
         self.cancellation_token = cancellation_token or CancellationToken()
         self.login_handler = login_handler
+        self.render_wait_until = render_wait_until if render_wait_until in {"domcontentloaded", "load", "networkidle"} else "domcontentloaded"
         self.respect_robots = respect_robots
         self._resolved_hosts: Dict[str, str] = {}
         self._robots_cache = {}
@@ -342,7 +344,7 @@ class WebScraper:
             try:
                 if self._should_stop():
                     raise ScraperError("页面操作已取消")
-                self._playwright_page.goto(url, wait_until="networkidle", timeout=self.timeout * 1000)
+                self._playwright_page.goto(url, wait_until=self.render_wait_until, timeout=self.timeout * 1000)
                 if self._should_stop():
                     raise ScraperError("页面操作已取消")
                 content = self._playwright_page.content()

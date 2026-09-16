@@ -226,6 +226,8 @@ class WebScraper:
         if self._should_stop():
             raise ScraperError("请求已取消")
         cfg = self.api_config
+        if cfg.get("stream_prefix") and (cfg.get("next_url_path") or cfg.get("cursor_path")):
+            raise ScraperError("流式模式不支持 next_url / cursor 分页，请改用 param/offset 分页")
         method = (cfg.get("method") or "GET").upper()
         if method not in {"GET", "POST"}:
             raise ScraperError(f"不支持的 API 请求方法: {method}")
@@ -271,7 +273,7 @@ class WebScraper:
                 if self._should_stop():
                     raise ScraperError("请求已取消")
                 if cfg.get("stream_prefix"):
-                    return self.iter_json_response(resp, cfg["stream_prefix"])
+                    return self._wrap_stream(self.iter_json_response(resp, cfg["stream_prefix"]))
                 return resp.json()
             except ValueError as e:
                 raise ScraperError(f"API 响应不是有效 JSON: {e}") from e
@@ -296,8 +298,15 @@ class WebScraper:
                 if self.random_ua:
                     self._update_headers()
                 if attempt < self.retries:
-                    time.sleep(random.uniform(1, 3))
+                    self._sleep_interruptibly(random.uniform(1, 3))
         raise ScraperError(f"API 请求失败（重试 {self.retries} 次）: {last_error}")
+
+    @staticmethod
+    def _wrap_stream(gen):
+        try:
+            yield from gen
+        except Exception as exc:
+            raise ScraperError(f"API 流式响应解析失败: {exc}") from exc
 
     @staticmethod
     def iter_json_response(response, prefix="item"):
@@ -562,6 +571,8 @@ class WebScraper:
     def _iter_api(self, list_selector, fields, **kwargs):
         """Page-level API generator; emits each parsed row as soon as its page arrives."""
         cfg = self.api_config; ptype = cfg.get("pagination_type", "none")
+        if cfg.get("stream_prefix") and (cfg.get("next_url_path") or cfg.get("cursor_path")):
+            raise ScraperError("流式模式不支持 next_url / cursor 分页，请改用 param/offset 分页")
         max_pages = kwargs.get("max_pages", 1); on_progress = kwargs.get("on_progress"); on_log = kwargs.get("on_log")
         url = self.start_url; state = checkpoint.load(self.checkpoint_path) if self.checkpoint_path else {}
         start = int(state.get("page", 0)) + 1 if state else 1

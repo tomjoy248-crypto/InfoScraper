@@ -1,6 +1,7 @@
 """Offline integration checks for HTTP parsing and proxy selection."""
 
 from unittest.mock import Mock, patch
+import pytest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
@@ -97,3 +98,20 @@ def test_real_local_http_static_stream_pipeline():
         rows = list(scraper.iter_run(".item", [{"name": "value", "selector": "span"}], max_pages=1))
     server.shutdown()
     assert [r["value"] for r in rows] == ["a", "b"]
+
+def test_stream_cursor_pagination_is_rejected():
+    scraper = WebScraper("https://example.com", mode="api", api_config={"stream_prefix": "item", "cursor_path": "next"})
+    with patch.object(scraper, "_validate_url"):
+        try:
+            list(scraper.iter_run("$", [], max_pages=2))
+        except ScraperError as exc:
+            assert "不支持" in str(exc)
+        else:
+            raise AssertionError("stream cursor pagination must be rejected")
+
+def test_stream_parser_wraps_errors():
+    def broken():
+        yield {"id": 1}
+        raise ValueError("truncated")
+    with pytest.raises(ScraperError, match="流式响应解析失败"):
+        list(WebScraper._wrap_stream(broken()))

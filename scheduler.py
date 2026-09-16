@@ -121,4 +121,5 @@ class InAppScheduler:
                         job.callback(job.task)
                     except Exception as e:
                         self._log(f"定时任务 '{job.job_id}' 执行失败: {e}")
+                        job.running = False
             time.sleep(5)

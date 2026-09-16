@@ -976,7 +976,7 @@ class ScraperGUI:
                 render_wait_until=task.get("render_wait_until", "domcontentloaded"),
                 api_config=task.get("api_config"),
             )
-            data = scraper.run(
+            raw_rows = scraper.iter_run(
                 list_selector=task["list_selector"],
                 fields=task["fields"],
                 selector_type=task.get("selector_type", "css"),
@@ -988,12 +988,9 @@ class ScraperGUI:
                 on_progress=lambda p, total: self.root.after(0, lambda: self._log(f"定时任务 第{p}页 累计{total}条")),
                 on_log=lambda msg: self.root.after(0, lambda: self._log(f"[定时] {msg}")),
             )
-            if task.get("clean_rules"):
-                data = apply_clean_rules(data, task["clean_rules"])
-            if task.get("dedup"):
-                dedup_fields = [f.strip() for f in task.get("dedup_fields", "").split(",") if f.strip()]
-                data = deduplicate(data, dedup_fields if dedup_fields else None)
-            record_id = save_record(task.get("task_name", "定时任务"), task["url"], data)
+            dedup_fields = [f.strip() for f in task.get("dedup_fields", "").split(",") if f.strip()] if task.get("dedup") else None
+            data = process_rows(raw_rows, task.get("clean_rules") or {}, dedup_fields)
+            record_id = save_record_stream(task.get("task_name", "定时任务"), task["url"], data)
             self.root.after(0, lambda: self._log(f"定时任务完成，保存记录 ID: {record_id}"))
             self.root.after(0, self._refresh_history)
         except Exception as e:

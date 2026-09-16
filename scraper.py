@@ -287,8 +287,6 @@ class WebScraper:
                 if isinstance(e, ScraperError):
                     raise
                 last_error = e
-                if attempt < self.retries:
-                    self._sleep_interruptibly(random.uniform(1, 3))
                 last_error = e
                 if self.proxy_single and attempt == self.retries:
                     self.proxy_single = None
@@ -306,6 +304,8 @@ class WebScraper:
         try:
             yield from gen
         except Exception as exc:
+            if isinstance(exc, ScraperError):
+                raise
             raise ScraperError(f"API 流式响应解析失败: {exc}") from exc
 
     @staticmethod
@@ -350,6 +350,8 @@ class WebScraper:
                 )
         last_error = None
         for attempt in range(self.retries + 1):
+            if self._should_stop():
+                raise ScraperError("请求已取消")
             try:
                 if self._should_stop():
                     raise ScraperError("页面操作已取消")

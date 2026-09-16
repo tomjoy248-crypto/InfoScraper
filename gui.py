@@ -47,6 +47,7 @@ class ScraperGUI:
         self.raw_data = []
         self.scheduler = InAppScheduler()
         self.scheduler.on_log = lambda msg: self.root.after(0, lambda: self._log(msg))
+        self.scheduler.load_jobs(lambda task: lambda _: self._run_scheduled_task(task))
         self.scheduler.start()
         self.start_time = None
         self._scheduled_running = set()
@@ -607,6 +608,16 @@ class ScraperGUI:
         if not self.list_selector_var.get().strip() or not self.fields:
             messagebox.showwarning("提示", "请配置列表选择器和至少一个字段")
             return
+        checkpoint_path = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "InfoScraper", "checkpoints", (self.task_name_var.get().strip() or "current") + ".json")
+        if os.path.exists(checkpoint_path):
+            choice = messagebox.askyesnocancel("发现未完成采集", "检测到上次未完成的断点。\n选择“是”继续，“否”重新开始，“取消”不启动。")
+            if choice is None:
+                return
+            if choice is False:
+                try:
+                    os.remove(checkpoint_path)
+                except OSError:
+                    pass
         self.result_data.clear()
         self.raw_data.clear()
         self.progress["value"] = 0
@@ -666,7 +677,7 @@ class ScraperGUI:
             processed = []; processed_count = 0
             def processed_rows():
                 nonlocal processed_count
-                for row in process_rows(stream_rows(), self.clean_rules, dedup_fields if self.dedup_var.get() else None, known, dedup=self.dedup_var.get()):
+                for row in process_rows(stream_rows(), self.clean_rules, dedup_fields if (self.dedup_var.get() or self.incremental_var.get()) else None, known, dedup=(self.dedup_var.get() or self.incremental_var.get())):
                     processed_count += 1
                     if len(processed) < 100:
                         processed.append(row)
@@ -746,14 +757,6 @@ class ScraperGUI:
         except Exception as exc:
             messagebox.showerror("错误", f"任务保存失败: {exc}")
             return
-        checkpoint_path = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "InfoScraper", "checkpoints", (self.task_name_var.get().strip() or "current") + ".json")
-        if os.path.exists(checkpoint_path):
-            choice = messagebox.askyesnocancel("发现未完成采集", "检测到上次未完成的断点。\n选择“是”继续，“否”重新开始，“取消”不启动。")
-            if choice is None:
-                return
-            if choice is False:
-                try: os.remove(checkpoint_path)
-                except OSError: pass
         messagebox.showinfo("完成", f"任务 '{name}' 已保存")
 
     def _load_task(self):

@@ -25,6 +25,7 @@ class InAppScheduler:
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
         self._running = False
+        self._stop_event = threading.Event()
         self.on_log: Optional[Callable[[str], None]] = None
         self.storage_path = storage_path or os.path.join(os.path.dirname(os.path.abspath(__file__)), "scheduler_jobs.json")
 
@@ -63,11 +64,15 @@ class InAppScheduler:
         if self._running:
             return
         self._running = True
+        self._stop_event.clear()
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
 
     def stop(self):
         self._running = False
+        self._stop_event.set()
+        if self._thread and self._thread is not threading.current_thread():
+            self._thread.join(timeout=1)
 
     def add_job(self, job_id: str, task: Dict, interval_minutes: int, callback: Callable) -> bool:
         if interval_minutes < 1:
@@ -116,10 +121,11 @@ class InAppScheduler:
                 if job.enabled and not job.running and now >= job.next_run:
                     job.running = True
                     job.next_run = now + timedelta(minutes=job.interval_minutes)
+                    self._persist()
                     self._log(f"执行定时任务 '{job.job_id}'")
                     try:
                         job.callback(job.task)
                     except Exception as e:
                         self._log(f"定时任务 '{job.job_id}' 执行失败: {e}")
                         job.running = False
-            time.sleep(5)
+            self._stop_event.wait(5)

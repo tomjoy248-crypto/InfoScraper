@@ -225,6 +225,8 @@ class WebScraper:
             elif code >= 400: rp.allow_all = True
             else: rp.parse((getattr(resp, "text", "") or "").splitlines())
         except Exception as exc:
+            if isinstance(exc, ScraperError):
+                raise
             if self.robots_fail_closed:
                 raise ScraperError(f"无法读取 robots.txt，已停止采集: {exc}") from exc
             import logging

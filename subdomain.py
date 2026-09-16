@@ -117,7 +117,7 @@ def fetch_crtsh(domain: str, on_log: Optional[Callable[[str], None]] = None) -> 
         req = urllib.request.Request(
             url,
             headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.85 Safari/537.36",
                 "Accept": "application/json",
             },
         )

@@ -1,5 +1,7 @@
 from scheduler import InAppScheduler
 import time
+import threading
+from datetime import datetime
 
 
 def test_scheduler_persists_next_run_and_enabled(tmp_path):
@@ -37,3 +39,36 @@ def test_scheduler_long_callback_does_not_overlap(tmp_path):
     thread = __import__("threading").Thread(target=scheduler._loop, daemon=True)
     thread.start(); time.sleep(0.25); scheduler.stop(); thread.join(timeout=1)
     assert calls.count("start") == 1
+
+
+def test_restored_async_job_finishes_and_can_run_again(tmp_path):
+    path = str(tmp_path / "restore.json")
+    original = InAppScheduler(path)
+    original.add_job("job", {"task_name": "restored"}, 1, lambda _: None)
+    restored = InAppScheduler(path)
+    calls = []
+
+    def factory(job_id, _task):
+        def callback(task):
+            def worker():
+                calls.append((threading.current_thread().name, task["task_name"]))
+                restored.finish(job_id)
+            threading.Thread(target=worker, daemon=True).start()
+        return callback
+
+    assert restored.load_jobs(factory) == 1
+    restored.jobs["job"].next_run = datetime(2000, 1, 1)
+    restored.start()
+    deadline = time.monotonic() + 1
+    while (not calls or restored.jobs["job"].running) and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert len(calls) == 1
+    assert restored.jobs["job"].running is False
+    restored.jobs["job"].next_run = datetime(2000, 1, 1)
+    restored._stop_event.set()
+    deadline = time.monotonic() + 1
+    while len(calls) < 2 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    restored.stop()
+    assert len(calls) == 2
+    assert all(name != threading.current_thread().name for name, _ in calls)

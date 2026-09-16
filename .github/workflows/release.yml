@@ -16,6 +16,7 @@ jobs:
         run: |
           $version = $env:GITHUB_REF_NAME.TrimStart('v')
           (Get-Content installer\setup.iss -Raw) -replace '#define MyAppVersion "[^"]+"', "#define MyAppVersion `"$version`"" | Set-Content installer\setup.iss -Encoding utf8
+          "__version__ = `"$version`"" | Set-Content version.py -Encoding ascii
       - run: pip install -r requirements.txt pyinstaller
       - run: pyinstaller --noconfirm --clean --onefile --windowed --name InfoScraper main.py
       - run: copy dist\InfoScraper.exe installer\files\InfoScraper.exe

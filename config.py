@@ -91,6 +91,11 @@ def load_task(name: str) -> Dict[str, Any]:
                 task[key] = secure_storage.decrypt(task[key])
             except Exception as exc:
                 raise ConfigError("敏感数据解密失败，请在当前 Windows 用户下重新输入") from exc
+    if isinstance(task.get("proxy_pool"), list):
+        try:
+            task["proxy_pool"] = [secure_storage.decrypt(value) if isinstance(value, str) else value for value in task["proxy_pool"]]
+        except Exception as exc:
+            raise ConfigError("敏感数据解密失败，请在当前 Windows 用户下重新输入") from exc
     task.setdefault("config_version", 1)
     return task
 

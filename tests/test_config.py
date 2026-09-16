@@ -3,6 +3,14 @@ import shutil
 import unittest
 
 import config
+
+
+def test_proxy_pool_round_trip_encrypted(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "DEFAULT_CONFIG_DIR", str(tmp_path))
+    values = ["http://u:p@9.9.9.9:80", "http://a:b@8.8.8.8:3128"]
+    config.save_task("proxy-task", {"proxy_pool": values})
+    assert all(value not in (tmp_path / "proxy-task.json").read_text(encoding="utf-8") for value in values)
+    assert config.load_task("proxy-task")["proxy_pool"] == values
 from config import ConfigError, list_tasks, load_task, save_task
 
 

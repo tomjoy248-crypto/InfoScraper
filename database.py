@@ -125,8 +125,10 @@ def existing_keys(task_name: str, keys: List[str]) -> set:
         return set()
     init_db(); conn = _get_conn(); result = set()
     try:
+        # Quote each key as a JSON object member.  This handles Chinese names,
+        # hyphens, spaces and other characters that are not valid bare paths.
         expressions = ", ".join("COALESCE(json_extract(r.row_json, ?), '')" for _ in keys)
-        paths = ["$." + k for k in keys]
+        paths = ['$."' + str(k).replace('"', '\\"') + '"' for k in keys]
         rows = conn.execute(
             f"SELECT {expressions} FROM scrape_rows r JOIN scrape_records s ON r.record_id=s.id WHERE s.task_name=?",
             (*paths, task_name),

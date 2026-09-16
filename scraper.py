@@ -164,8 +164,12 @@ class WebScraper:
             rp = self._robots_cache.get(robots_url)
             if rp is None:
                 rp = urllib.robotparser.RobotFileParser(robots_url)
-                try: rp.read()
-                except Exception: pass
+                try:
+                    rp.read()
+                except Exception as exc:
+                    # A compliance-enabled scraper must not silently fail open
+                    # when policy cannot be retrieved.
+                    raise ScraperError(f"无法读取 robots.txt，已停止采集: {exc}") from exc
                 self._robots_cache[robots_url] = rp
             if not rp.can_fetch(self.session.headers.get("User-Agent", "*"), url):
                 raise ScraperError("robots.txt 禁止采集该 URL")

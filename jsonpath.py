@@ -28,12 +28,13 @@ def _tokenize(path: str) -> List[str]:
         path = path[2:]
     elif path.startswith("$"):
         path = path[1:]
+    path = path.replace("'", "").replace('"', "")
     tokens = _TOKEN_RE.findall(path)
     # Reject silently discarded characters (the old parser lost Chinese and
     # hyphenated keys without reporting an error).
     cleaned = _TOKEN_RE.sub("", path).replace(" ", "")
     if cleaned:
-        raise JSONPathError(f"无法解析的 JSONPath 字符: {cleaned}")
+        raise JSONPathError(f"无法解析的 JSONPath: {path!r}（非法字符: {cleaned!r}）")
     return tokens
 
 

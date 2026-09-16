@@ -283,6 +283,10 @@ class ScraperGUI:
 
         self.delay_random_var = tk.BooleanVar(value=True)
         tk.Checkbutton(frame, text="随机延迟（0~基础延迟）", variable=self.delay_random_var).grid(row=2, column=2, sticky=tk.W, padx=5, pady=2)
+        self.respect_robots_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(frame, text="遵守 robots.txt", variable=self.respect_robots_var).grid(row=3, column=0, sticky=tk.W, padx=5, pady=2)
+        self.robots_fail_closed_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(frame, text="robots 读取失败时停止", variable=self.robots_fail_closed_var).grid(row=3, column=1, sticky=tk.W, padx=5, pady=2)
 
         proxy_frame = tk.LabelFrame(parent, text="代理池")
         proxy_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -630,6 +634,8 @@ class ScraperGUI:
                 render_wait_until=self.render_wait_var.get(),
                 api_config=task.get("api_config"),
                 checkpoint_path=os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "InfoScraper", "checkpoints", (self.task_name_var.get().strip() or "current") + ".json"),
+                respect_robots=self.respect_robots_var.get(),
+                robots_fail_closed=self.robots_fail_closed_var.get(),
             )
             raw = scraper.iter_run(
                 list_selector=self.list_selector_var.get().strip(),
@@ -801,6 +807,8 @@ class ScraperGUI:
             "retries": self.retries_var.get(),
             "delay": self.delay_var.get(),
             "delay_random": self.delay_random_var.get(),
+            "respect_robots": self.respect_robots_var.get(),
+            "robots_fail_closed": self.robots_fail_closed_var.get(),
             "dedup": self.dedup_var.get(),
             "dedup_fields": self.dedup_fields_var.get(),
             "incremental": self.incremental_var.get(),
@@ -984,6 +992,8 @@ class ScraperGUI:
                 render=task.get("render", False),
                 render_wait_until=task.get("render_wait_until", "domcontentloaded"),
                 api_config=task.get("api_config"),
+                respect_robots=task.get("respect_robots", True),
+                robots_fail_closed=task.get("robots_fail_closed", False),
             )
             raw_rows = scraper.iter_run(
                 list_selector=task["list_selector"],

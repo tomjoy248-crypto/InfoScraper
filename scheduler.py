@@ -39,7 +39,7 @@ class InAppScheduler:
             json.dump(payload, handle, ensure_ascii=False, indent=2)
         os.replace(temp, self.storage_path)
 
-    def load_jobs(self, callback_factory: Callable[[Dict], Callable]) -> int:
+    def load_jobs(self, callback_factory: Callable[[str, Dict], Callable]) -> int:
         """Load persisted jobs and create callbacks through ``callback_factory``."""
         if not os.path.exists(self.storage_path):
             return 0
@@ -49,10 +49,7 @@ class InAppScheduler:
             for item in payload:
                 if int(item.get("interval", 0)) < 1:
                     continue
-                try:
-                    callback = callback_factory(item["id"], item["task"])
-                except TypeError:
-                    callback = callback_factory(item["task"])
+                callback = callback_factory(item["id"], item["task"])
                 self.add_job(item["id"], item["task"], int(item["interval"]), callback)
                 job = self.jobs[item["id"]]
                 if item.get("next_run"):

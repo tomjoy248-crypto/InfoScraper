@@ -170,14 +170,15 @@ class WebScraper:
                 return
 
     def _fetch(self, url: str, method: str = "GET", payload: Optional[Dict] = None) -> str:
+        self._validate_url(url)
         if self.respect_robots and method.upper() == "GET":
             robots_url = urllib.parse.urljoin(url, "/robots.txt")
+            self._validate_url(robots_url)
             rp = self._load_robots(robots_url)
             if not rp.can_fetch(self.session.headers.get("User-Agent", "*"), url):
                 raise ScraperError("robots.txt 禁止采集该 URL")
         if self._should_stop():
             raise ScraperError("请求已取消")
-        self._validate_url(url)
         if self.render:
             return self._fetch_render(url)
         last_error = None
@@ -211,9 +212,10 @@ class WebScraper:
             return cached
         rp = urllib.robotparser.RobotFileParser(); rp.set_url(robots_url)
         try:
-            resp = self.session.get(robots_url, proxies=self._pick_proxy(), timeout=self.timeout, allow_redirects=True)
+            resp = self.session.get(robots_url, proxies=self._pick_proxy(), timeout=self.timeout, allow_redirects=False)
             code = getattr(resp, "status_code", 200)
             if code in (401, 403): rp.disallow_all = True
+            elif code == 429: raise ScraperError("robots.txt 请求被限流，已停止采集")
             elif code >= 400: rp.allow_all = True
             else: rp.parse((getattr(resp, "text", "") or "").splitlines())
         except Exception as exc:

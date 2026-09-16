@@ -659,7 +659,7 @@ class ScraperGUI:
             processed = []; processed_count = 0
             def processed_rows():
                 nonlocal processed_count
-                for row in process_rows(stream_rows(), self.clean_rules, dedup_fields if self.dedup_var.get() else None, known):
+                for row in process_rows(stream_rows(), self.clean_rules, dedup_fields if self.dedup_var.get() else None, known, dedup=self.dedup_var.get()):
                     processed_count += 1
                     if len(processed) < 100:
                         processed.append(row)
@@ -989,7 +989,7 @@ class ScraperGUI:
                 on_log=lambda msg: self.root.after(0, lambda: self._log(f"[定时] {msg}")),
             )
             dedup_fields = [f.strip() for f in task.get("dedup_fields", "").split(",") if f.strip()] if task.get("dedup") else None
-            data = process_rows(raw_rows, task.get("clean_rules") or {}, dedup_fields)
+            data = process_rows(raw_rows, task.get("clean_rules") or {}, dedup_fields, dedup=bool(task.get("dedup")))
             record_id = save_record_stream(task.get("task_name", "定时任务"), task["url"], data)
             self.root.after(0, lambda: self._log(f"定时任务完成，保存记录 ID: {record_id}"))
             self.root.after(0, self._refresh_history)

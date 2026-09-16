@@ -12,7 +12,10 @@ def process_rows(rows: Iterable[Dict[str, str]], field_rules: Optional[Dict[str,
     """Clean, filter, and deduplicate rows one at a time with bounded state."""
     rules = field_rules or {}
     deduper = IncrementalDeduplicator(dedup_keys)
-    known = known_keys or set()
+    # Copy the caller's set only when absent; when supplied, update it so a
+    # single pipeline also suppresses duplicates encountered later in the same
+    # run (and makes the contract explicit).
+    known = known_keys if known_keys is not None else set()
     for row in rows:
         item = dict(row)
         for field, field_ruleset in rules.items():
@@ -24,5 +27,6 @@ def process_rows(rows: Iterable[Dict[str, str]], field_rules: Optional[Dict[str,
             key = tuple(str(item.get(k, "")).strip() for k in dedup_keys)
             if key in known:
                 continue
+            known.add(key)
         if deduper.accept(item):
             yield item

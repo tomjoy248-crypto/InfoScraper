@@ -268,6 +268,9 @@ class ScraperGUI:
 
         self.render_var = tk.BooleanVar(value=False)
         tk.Checkbutton(frame, text="使用 Playwright 渲染（JS 动态页面）", variable=self.render_var).grid(row=0, column=1, sticky=tk.W, padx=5, pady=2)
+        tk.Label(frame, text="等待策略:").grid(row=0, column=2, sticky=tk.W, padx=5)
+        self.render_wait_var = tk.StringVar(value="domcontentloaded")
+        ttk.Combobox(frame, textvariable=self.render_wait_var, values=["domcontentloaded", "load", "networkidle"], state="readonly", width=16).grid(row=0, column=3, padx=5)
 
         tk.Label(frame, text="重试次数:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
         self.retries_var = tk.IntVar(value=2)
@@ -623,6 +626,7 @@ class ScraperGUI:
                 random_ua=self.random_ua_var.get(),
                 retries=self.retries_var.get(),
                 render=self.render_var.get(),
+                render_wait_until=self.render_wait_var.get(),
                 api_config=task.get("api_config"),
                 checkpoint_path=os.path.join(os.path.dirname(__file__), "checkpoints", (self.task_name_var.get().strip() or "current") + ".json"),
             )
@@ -784,6 +788,7 @@ class ScraperGUI:
             "fields": self.fields,
             "random_ua": self.random_ua_var.get(),
             "render": self.render_var.get(),
+            "render_wait_until": self.render_wait_var.get(),
             "retries": self.retries_var.get(),
             "delay": self.delay_var.get(),
             "delay_random": self.delay_random_var.get(),
@@ -829,6 +834,7 @@ class ScraperGUI:
             ))
         self.random_ua_var.set(task.get("random_ua", False))
         self.render_var.set(task.get("render", False))
+        self.render_wait_var.set(task.get("render_wait_until", "domcontentloaded"))
         self.retries_var.set(task.get("retries", 2))
         self.delay_var.set(task.get("delay", 0.5))
         self.delay_random_var.set(task.get("delay_random", True))
@@ -967,6 +973,7 @@ class ScraperGUI:
                 random_ua=task.get("random_ua", False),
                 retries=task.get("retries", 2),
                 render=task.get("render", False),
+                render_wait_until=task.get("render_wait_until", "domcontentloaded"),
                 api_config=task.get("api_config"),
             )
             data = scraper.run(

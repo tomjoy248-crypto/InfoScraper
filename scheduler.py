@@ -85,6 +85,12 @@ class InAppScheduler:
                 self._persist()
         self._log(f"删除定时任务 '{job_id}'")
 
+    def finish(self, job_id: str):
+        with self._lock:
+            job = self.jobs.get(job_id)
+            if job:
+                job.running = False
+
     def list_jobs(self) -> List[Dict]:
         with self._lock:
             return [
@@ -115,6 +121,4 @@ class InAppScheduler:
                         job.callback(job.task)
                     except Exception as e:
                         self._log(f"定时任务 '{job.job_id}' 执行失败: {e}")
-                    finally:
-                        job.running = False
             time.sleep(5)

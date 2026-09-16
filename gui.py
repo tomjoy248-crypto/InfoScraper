@@ -943,7 +943,9 @@ class ScraperGUI:
             self.root.after(0, lambda: self._log(f"定时任务触发: {name}"))
             def run():
                 try: self._run_scheduled_task(t)
-                finally: self._scheduled_running.discard(job_id)
+                finally:
+                    self._scheduled_running.discard(job_id)
+                    self.scheduler.finish(job_id)
             thread = threading.Thread(target=run, daemon=True)
             thread.start()
 
@@ -1074,6 +1076,7 @@ class ScraperGUI:
 def main():
     root = tk.Tk()
     app = ScraperGUI(root)
+    root.protocol("WM_DELETE_WINDOW", lambda: (app.scheduler.stop(), root.destroy()))
     root.mainloop()
 
 

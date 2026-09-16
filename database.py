@@ -16,6 +16,17 @@ def _get_conn():
     return conn
 
 
+def _find_proxy_id(conn, address: str):
+    """Find a proxy by its decrypted address because DPAPI ciphertext is randomized."""
+    for proxy_id, stored in conn.execute("SELECT id,address FROM proxies").fetchall():
+        try:
+            if secure_storage.decrypt(stored) == address:
+                return proxy_id
+        except Exception:
+            continue
+    return None
+
+
 def init_db(drop_legacy: bool = False):
     conn = _get_conn()
     conn.execute("""
@@ -92,12 +103,18 @@ def check_proxy(address: str, timeout: float = 5.0) -> bool:
 
 def set_proxy_enabled(address: str, enabled: bool) -> None:
     """Enable or disable a proxy after health evaluation."""
-    init_db(); conn = _get_conn(); conn.execute("UPDATE proxies SET enabled=?, cooldown_until=? WHERE address=?", (1 if enabled else 0, 0 if enabled else time.time() + 300, address)); conn.commit(); conn.close()
+    init_db(); conn = _get_conn(); proxy_id = _find_proxy_id(conn, address)
+    if proxy_id is not None:
+        conn.execute("UPDATE proxies SET enabled=?, cooldown_until=? WHERE id=?", (1 if enabled else 0, 0 if enabled else time.time() + 300, proxy_id))
+    conn.commit(); conn.close()
 
 
 def mark_proxy_success(address: str) -> None:
     """Reset failure count after a successful health check."""
-    init_db(); conn = _get_conn(); conn.execute("UPDATE proxies SET fail_count=0, enabled=1 WHERE address=?", (address,)); conn.commit(); conn.close()
+    init_db(); conn = _get_conn(); proxy_id = _find_proxy_id(conn, address)
+    if proxy_id is not None:
+        conn.execute("UPDATE proxies SET fail_count=0, enabled=1, cooldown_until=0 WHERE id=?", (proxy_id,))
+    conn.commit(); conn.close()
 
 
 def save_record(task_name: str, start_url: str, data: List[Dict[str, str]]) -> int:
@@ -222,6 +239,8 @@ def add_proxy(address: str):
     init_db()
     conn = _get_conn()
     try:
+        if _find_proxy_id(conn, address) is not None:
+            return
         conn.execute(
             "INSERT INTO proxies (address, added_at) VALUES (?, ?)",
             (secure_storage.encrypt(address), datetime.now().isoformat()),
@@ -229,7 +248,8 @@ def add_proxy(address: str):
         conn.commit()
     except sqlite3.IntegrityError:
         pass
-    conn.close()
+    finally:
+        conn.close()
 
 
 def list_proxies() -> List[Dict[str, Any]]:

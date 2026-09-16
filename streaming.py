@@ -7,11 +7,12 @@ from dedup import IncrementalDeduplicator
 
 
 def process_rows(rows: Iterable[Dict[str, str]], field_rules: Optional[Dict[str, List[str]]] = None,
-                dedup_keys: Optional[List[str]] = None, known_keys: Optional[set] = None
+                dedup_keys: Optional[List[str]] = None, known_keys: Optional[set] = None,
+                dedup: bool = False
                 ) -> Iterator[Dict[str, str]]:
     """Clean, filter, and deduplicate rows one at a time with bounded state."""
     rules = field_rules or {}
-    deduper = IncrementalDeduplicator(dedup_keys)
+    deduper = IncrementalDeduplicator(None) if dedup and not dedup_keys else None
     # Copy the caller's set only when absent; when supplied, update it so a
     # single pipeline also suppresses duplicates encountered later in the same
     # run (and makes the contract explicit).
@@ -28,5 +29,7 @@ def process_rows(rows: Iterable[Dict[str, str]], field_rules: Optional[Dict[str,
             if key in known:
                 continue
             known.add(key)
-        if deduper.accept(item):
+        if dedup_keys:
+            yield item
+        elif deduper is None or deduper.accept(item):
             yield item

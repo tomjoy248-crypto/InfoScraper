@@ -24,12 +24,12 @@ def process_rows(rows: Iterable[Dict[str, str]], field_rules: Optional[Dict[str,
                 for rule in field_ruleset:
                     if rule in CLEAN_RULES:
                         item[field] = CLEAN_RULES[rule](item[field])
-        if dedup_keys:
+        if dedup and dedup_keys:
             key = tuple(str(item.get(k, "")).strip() for k in dedup_keys)
             if key in known:
                 continue
             known.add(key)
-        if dedup_keys:
+        if dedup and dedup_keys:
             yield item
         elif deduper is None or deduper.accept(item):
             yield item

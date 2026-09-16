@@ -79,7 +79,12 @@ def check_proxy(address: str, timeout: float = 5.0) -> bool:
     try:
         import requests
         started = time.monotonic(); response = requests.get("https://www.google.com/generate_204", proxies={"http": address, "https": address}, timeout=timeout)
-        conn = _get_conn(); conn.execute("UPDATE proxies SET latency=? WHERE address=?", (time.monotonic() - started, address)); conn.commit(); conn.close()
+        conn = _get_conn()
+        for proxy_id, stored in conn.execute("SELECT id,address FROM proxies").fetchall():
+            if secure_storage.decrypt(stored) == address:
+                conn.execute("UPDATE proxies SET latency=? WHERE id=?", (time.monotonic() - started, proxy_id))
+                break
+        conn.commit(); conn.close()
         return response.status_code < 500
     except Exception:
         return False

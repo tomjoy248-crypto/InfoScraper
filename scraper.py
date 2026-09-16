@@ -192,6 +192,8 @@ class WebScraper:
                     self._update_headers()
                 if attempt < self.retries:
                     self._sleep_interruptibly(random.uniform(1, 3))
+            else:
+                return resp.text
         raise ScraperError(f"请求失败（重试 {self.retries} 次）: {last_error}")
 
     def _load_robots(self, robots_url: str):

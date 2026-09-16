@@ -124,10 +124,19 @@ def existing_keys(task_name: str, keys: List[str]) -> set:
     if not keys:
         return set()
     init_db(); conn = _get_conn(); result = set()
-    records = conn.execute("SELECT id FROM scrape_records WHERE task_name=?", (task_name,)).fetchall()
-    for (record_id,) in records:
-        rows = conn.execute("SELECT row_json FROM scrape_rows WHERE record_id=?", (record_id,)).fetchall()
-        result.update(tuple(str(row.get(k, "")).strip() for k in keys) for row in (json.loads(x[0]) for x in rows))
+    try:
+        expressions = ", ".join("COALESCE(json_extract(r.row_json, ?), '')" for _ in keys)
+        paths = ["$." + k for k in keys]
+        rows = conn.execute(
+            f"SELECT {expressions} FROM scrape_rows r JOIN scrape_records s ON r.record_id=s.id WHERE s.task_name=?",
+            (*paths, task_name),
+        ).fetchall()
+        result.update(tuple(str(value).strip() for value in row) for row in rows)
+    except sqlite3.OperationalError:
+        records = conn.execute("SELECT id FROM scrape_records WHERE task_name=?", (task_name,)).fetchall()
+        for (record_id,) in records:
+            rows = conn.execute("SELECT row_json FROM scrape_rows WHERE record_id=?", (record_id,)).fetchall()
+            result.update(tuple(str(row.get(k, "")).strip() for k in keys) for row in (json.loads(x[0]) for x in rows))
     conn.close(); return result
 
 

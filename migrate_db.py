@@ -24,7 +24,8 @@ def migrate(path: str, drop_legacy: bool = False) -> int:
         conn.executemany("INSERT INTO scrape_rows(record_id,row_json) VALUES (?,?)",
                          [(record_id, json.dumps(row, ensure_ascii=False)) for row in rows])
         conn.execute("UPDATE scrape_records SET data_json='' WHERE id=?", (record_id,))
-        conn.execute("UPDATE scrape_records SET total_count=? WHERE id=?", (len(rows), record_id))
+        if "total_count" in [r[1] for r in conn.execute("PRAGMA table_info(scrape_records)")]:
+            conn.execute("UPDATE scrape_records SET total_count=? WHERE id=?", (len(rows), record_id))
         moved += len(rows)
     if drop_legacy:
         cols = [r[1] for r in conn.execute("PRAGMA table_info(scrape_records)")]

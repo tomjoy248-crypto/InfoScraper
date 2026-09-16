@@ -15,7 +15,7 @@ def _get_conn():
     return conn
 
 
-def init_db():
+def init_db(drop_legacy: bool = False):
     conn = _get_conn()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS scrape_records (
@@ -52,6 +52,14 @@ def init_db():
         conn.commit()
     except sqlite3.OperationalError:
         pass
+    if drop_legacy:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(scrape_records)")]
+        if "data_json" in cols:
+            conn.execute("ALTER TABLE scrape_records RENAME TO scrape_records_legacy")
+            conn.execute("CREATE TABLE scrape_records (id INTEGER PRIMARY KEY AUTOINCREMENT, task_name TEXT, start_url TEXT, total_count INTEGER, created_at TEXT)")
+            conn.execute("INSERT INTO scrape_records SELECT id,task_name,start_url,total_count,created_at FROM scrape_records_legacy")
+            conn.execute("DROP TABLE scrape_records_legacy")
+            conn.commit()
     try:
         conn.execute("ALTER TABLE proxies ADD COLUMN cooldown_until REAL DEFAULT 0")
         conn.execute("ALTER TABLE proxies ADD COLUMN latency REAL DEFAULT 0")

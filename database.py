@@ -66,6 +66,11 @@ def init_db(drop_legacy: bool = False):
         conn.execute("ALTER TABLE proxies ADD COLUMN latency REAL DEFAULT 0")
     except sqlite3.OperationalError:
         pass
+    # Encrypt legacy plaintext proxy addresses in place once.
+    for proxy_id, stored in conn.execute("SELECT id, address FROM proxies").fetchall():
+        if stored and not str(stored).startswith(("dpapi:", "b64:")):
+            conn.execute("UPDATE proxies SET address=? WHERE id=?", (secure_storage.encrypt(stored), proxy_id))
+    conn.commit()
     conn.close()
 
 

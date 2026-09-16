@@ -9,7 +9,7 @@ def test_scheduler_persists_next_run_and_enabled(tmp_path):
     first.jobs["job"].enabled = False
     first._persist()
     second = InAppScheduler(path)
-    assert second.load_jobs(lambda task: lambda _: None) == 1
+    assert second.load_jobs(lambda _job_id, task: lambda _: None) == 1
     assert second.jobs["job"].enabled is False
 
 def test_scheduler_running_flag_blocks_overlap(tmp_path):

@@ -47,7 +47,7 @@ class ScraperGUI:
         self.raw_data = []
         self.scheduler = InAppScheduler()
         self.scheduler.on_log = lambda msg: self.root.after(0, lambda: self._log(msg))
-        self.scheduler.load_jobs(lambda task: lambda _: self._run_scheduled_task(task))
+        self.scheduler.load_jobs(lambda job_id, task: self._make_schedule_callback(job_id, task.get("task_name", "定时任务")))
         self.scheduler.start()
         self.start_time = None
         self._scheduled_running = set()
@@ -954,6 +954,20 @@ class ScraperGUI:
         threading.Thread(target=worker, daemon=True).start()
 
     # === 定时任务 ===
+    def _make_schedule_callback(self, job_id, name):
+        def callback(task):
+            if job_id in self._scheduled_running:
+                self.root.after(0, lambda: self._log(f"定时任务跳过重叠执行: {name}"))
+                return
+            self._scheduled_running.add(job_id)
+            def run():
+                try: self._run_scheduled_task(task)
+                finally:
+                    self._scheduled_running.discard(job_id)
+                    self.scheduler.finish(job_id)
+            threading.Thread(target=run, daemon=True).start()
+        return callback
+
     def _add_schedule(self):
         name = self.task_name_var.get().strip() or "未命名"
         interval = self.schedule_interval_var.get()
@@ -961,19 +975,7 @@ class ScraperGUI:
         task["task_name"] = name
         job_id = f"{name}_{uuid.uuid4().hex[:8]}"
 
-        def callback(t):
-            if job_id in self._scheduled_running:
-                self.root.after(0, lambda: self._log(f"定时任务跳过重叠执行: {name}"))
-                return
-            self._scheduled_running.add(job_id)
-            self.root.after(0, lambda: self._log(f"定时任务触发: {name}"))
-            def run():
-                try: self._run_scheduled_task(t)
-                finally:
-                    self._scheduled_running.discard(job_id)
-                    self.scheduler.finish(job_id)
-            thread = threading.Thread(target=run, daemon=True)
-            thread.start()
+        callback = self._make_schedule_callback(job_id, name)
 
         if self.scheduler.add_job(job_id, task, interval, callback):
             self._refresh_schedules()

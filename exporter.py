@@ -30,7 +30,11 @@ def export_excel(data: List[Dict[str, str]], path: str):
     rows = redact(data); fields = _fields(rows)
     wb = Workbook(); ws = wb.active; ws.append(fields)
     from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
-    for row in rows: ws.append([_safe_cell(ILLEGAL_CHARACTERS_RE.sub("", str(row.get(k, "")))) for k in fields])
+    def cell(v):
+        if isinstance(v, str):
+            return _safe_cell(ILLEGAL_CHARACTERS_RE.sub("", v))
+        return v
+    for row in rows: ws.append([cell(row.get(k)) for k in fields])
     wb.save(path)
 
 

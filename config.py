@@ -10,7 +10,7 @@ CONFIG_VERSION = 1
 
 
 DEFAULT_CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tasks")
-SENSITIVE_KEYS = ("cookie",)
+SENSITIVE_KEYS = ("cookie", "proxy", "proxy_single")
 
 # 任务名允许使用的字符：字母、数字、中文、下划线、中划线、点、空格
 # 其他字符会替换为下划线；路径分隔符和 .. 明确禁止

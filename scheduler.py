@@ -49,7 +49,11 @@ class InAppScheduler:
             for item in payload:
                 if int(item.get("interval", 0)) < 1:
                     continue
-                self.add_job(item["id"], item["task"], int(item["interval"]), callback_factory(item["task"]))
+                try:
+                    callback = callback_factory(item["id"], item["task"])
+                except TypeError:
+                    callback = callback_factory(item["task"])
+                self.add_job(item["id"], item["task"], int(item["interval"]), callback)
                 job = self.jobs[item["id"]]
                 if item.get("next_run"):
                     try: job.next_run = datetime.fromisoformat(item["next_run"])
@@ -121,7 +125,8 @@ class InAppScheduler:
                 if job.enabled and not job.running and now >= job.next_run:
                     job.running = True
                     job.next_run = now + timedelta(minutes=job.interval_minutes)
-                    self._persist()
+                    with self._lock:
+                        self._persist()
                     self._log(f"执行定时任务 '{job.job_id}'")
                     try:
                         job.callback(job.task)

@@ -719,12 +719,12 @@ class WebScraper:
                 self.api_config["request_page_value"] = offset_start + (page - 1) * offset_step
             data = self._fetch_api(current_url)
             if cfg.get("stream_prefix"):
-                rows = []
                 for item in data:
-                    rows.extend(self.parse_api_items([item], "$", fields))
+                    for row in self.parse_api_items([item], "$", fields):
+                        self._emit_rows([row], all_results)
             else:
                 rows = self.parse_api_items(data, list_selector, fields)
-            self._emit_rows(rows, all_results)
+                self._emit_rows(rows, all_results)
             if self.checkpoint_path:
                 checkpoint.save(self.checkpoint_path, {"page": page, "url": current_url, "count": len(all_results)})
             if on_progress:

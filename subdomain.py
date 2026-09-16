@@ -6,6 +6,7 @@ import urllib.parse
 import urllib.request
 import re
 import uuid
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from pathlib import Path
 from typing import Callable, List, Optional, Set
 
@@ -50,13 +51,10 @@ DEFAULT_WORDLIST = [
 def dns_resolve(subdomain: str, timeout: float = 2.0) -> Optional[str]:
     """尝试解析子域名，成功返回 IP，失败返回 None。"""
     try:
-        socket.setdefaulttimeout(timeout)
-        ip = socket.gethostbyname(subdomain)
-        return ip
-    except socket.error:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(socket.gethostbyname, subdomain).result(timeout=timeout)
+    except (socket.error, TimeoutError):
         return None
-    finally:
-        socket.setdefaulttimeout(None)
 
 
 def brute_subdomains(

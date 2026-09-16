@@ -150,6 +150,15 @@ class WebScraper:
     def _should_stop(self) -> bool:
         return self._cancelled or self.cancellation_token.is_cancelled()
 
+    def _save_checkpoint(self, state: Dict[str, Any]) -> None:
+        if not self.checkpoint_path:
+            return
+        try:
+            checkpoint.save(self.checkpoint_path, state)
+        except OSError as exc:
+            import logging
+            logging.getLogger(__name__).warning("断点保存失败（不影响本次采集）: %s", exc)
+
     def _sleep_interruptibly(self, seconds: float) -> None:
         """Sleep in short intervals so cancellation is responsive."""
         deadline = time.monotonic() + max(0.0, seconds)
@@ -575,7 +584,7 @@ class WebScraper:
                 emitted += 1
                 yield row
             if self.checkpoint_path:
-                checkpoint.save(self.checkpoint_path, {"page": page, "url": current_url, "count": emitted})
+                self._save_checkpoint({"page": page, "url": current_url, "count": emitted})
             if on_progress: on_progress(page, emitted)
             if page >= max_pages or self._should_stop(): break
             if next_page_mode == "param":
@@ -614,7 +623,7 @@ class WebScraper:
             else:
                 for row in self.parse_api_items(data, list_selector, fields):
                     total += 1; yield row
-            if self.checkpoint_path: checkpoint.save(self.checkpoint_path, {"page": page, "url": url, "count": total})
+            if self.checkpoint_path: self._save_checkpoint({"page": page, "url": url, "count": total})
             if on_progress: on_progress(page, total)
             if page >= max_pages: break
             path = cfg.get("next_url_path"); cpath = cfg.get("cursor_path")
@@ -667,7 +676,7 @@ class WebScraper:
             rows = self.parse_fields(html_text, list_selector, fields, selector_type)
             self._emit_rows(rows, all_results)
             if self.checkpoint_path:
-                checkpoint.save(self.checkpoint_path, {"page": page, "url": current_url, "count": len(all_results)})
+                self._save_checkpoint({"page": page, "url": current_url, "count": len(all_results)})
             if on_progress:
                 on_progress(page, len(all_results))
             if page >= max_pages:
@@ -746,7 +755,7 @@ class WebScraper:
                 rows = self.parse_api_items(data, list_selector, fields)
                 self._emit_rows(rows, all_results)
             if self.checkpoint_path:
-                checkpoint.save(self.checkpoint_path, {"page": page, "url": current_url, "count": len(all_results)})
+                self._save_checkpoint({"page": page, "url": current_url, "count": len(all_results)})
             if on_progress:
                 on_progress(page, len(all_results))
             if page >= max_pages:
@@ -812,3 +821,4 @@ class WebScraper:
         qs[param] = [str(value)]
         query = urllib.parse.urlencode(qs, doseq=True)
         return urllib.parse.urlunparse(parsed._replace(query=query))
+

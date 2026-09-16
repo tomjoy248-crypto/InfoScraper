@@ -54,6 +54,7 @@ class WebScraper:
         checkpoint_path: Optional[str] = None,
         cancellation_token: Optional[CancellationToken] = None,
         respect_robots: bool = True,
+        robots_fail_closed: bool = False,
         login_handler: Optional[Callable[[Any], bool]] = None,
         render_wait_until: str = "domcontentloaded",
     ):
@@ -75,6 +76,7 @@ class WebScraper:
         self.login_handler = login_handler
         self.render_wait_until = render_wait_until if render_wait_until in {"domcontentloaded", "load", "networkidle"} else "domcontentloaded"
         self.respect_robots = respect_robots
+        self.robots_fail_closed = robots_fail_closed
         self._resolved_hosts: Dict[str, str] = {}
         self._robots_cache = {}
         if self.checkpoint_path:
@@ -161,16 +163,7 @@ class WebScraper:
     def _fetch(self, url: str, method: str = "GET", payload: Optional[Dict] = None) -> str:
         if self.respect_robots and method.upper() == "GET":
             robots_url = urllib.parse.urljoin(url, "/robots.txt")
-            rp = self._robots_cache.get(robots_url)
-            if rp is None:
-                rp = urllib.robotparser.RobotFileParser(robots_url)
-                try:
-                    rp.read()
-                except Exception as exc:
-                    # A compliance-enabled scraper must not silently fail open
-                    # when policy cannot be retrieved.
-                    raise ScraperError(f"无法读取 robots.txt，已停止采集: {exc}") from exc
-                self._robots_cache[robots_url] = rp
+            rp = self._load_robots(robots_url)
             if not rp.can_fetch(self.session.headers.get("User-Agent", "*"), url):
                 raise ScraperError("robots.txt 禁止采集该 URL")
         if self._should_stop():
@@ -191,7 +184,6 @@ class WebScraper:
                 resp.raise_for_status()
                 if self._should_stop():
                     raise ScraperError("请求已取消")
-                return resp.text
             except Exception as e:
                 if isinstance(e, ScraperError):
                     raise
@@ -201,6 +193,26 @@ class WebScraper:
                 if attempt < self.retries:
                     self._sleep_interruptibly(random.uniform(1, 3))
         raise ScraperError(f"请求失败（重试 {self.retries} 次）: {last_error}")
+
+    def _load_robots(self, robots_url: str):
+        cached = self._robots_cache.get(robots_url)
+        if cached is not None:
+            return cached
+        rp = urllib.robotparser.RobotFileParser(); rp.set_url(robots_url)
+        try:
+            resp = self.session.get(robots_url, proxies=self._pick_proxy(), timeout=self.timeout, allow_redirects=True)
+            code = getattr(resp, "status_code", 200)
+            if code in (401, 403): rp.disallow_all = True
+            elif code >= 400: rp.allow_all = True
+            else: rp.parse((getattr(resp, "text", "") or "").splitlines())
+        except Exception as exc:
+            if self.robots_fail_closed:
+                raise ScraperError(f"无法读取 robots.txt，已停止采集: {exc}") from exc
+            import logging
+            logging.getLogger(__name__).warning("robots.txt 读取失败，按放行处理: %s", exc)
+            rp.allow_all = True
+        self._robots_cache[robots_url] = rp
+        return rp
 
     def _validate_url(self, url: str) -> None:
         """Reject dangerous schemes and private/link-local destinations."""

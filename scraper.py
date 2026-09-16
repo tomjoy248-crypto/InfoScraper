@@ -9,6 +9,7 @@ import ipaddress
 import socket
 import urllib.robotparser
 import io
+import time
 import checkpoint
 from cancellation import CancellationToken
 from typing import Any, Callable, Dict, List, Optional
@@ -79,6 +80,8 @@ class WebScraper:
         self.robots_fail_closed = robots_fail_closed
         self._resolved_hosts: Dict[str, str] = {}
         self._robots_cache = {}
+        self.robots_cache_ttl = 3600
+        self.robots_cache_limit = 100
         if self.checkpoint_path:
             os.makedirs(os.path.dirname(self.checkpoint_path) or ".", exist_ok=True)
         self._cancelled = False
@@ -209,7 +212,10 @@ class WebScraper:
     def _load_robots(self, robots_url: str):
         cached = self._robots_cache.get(robots_url)
         if cached is not None:
-            return cached
+            created, policy = cached
+            if time.monotonic() - created < self.robots_cache_ttl:
+                return policy
+            self._robots_cache.pop(robots_url, None)
         rp = urllib.robotparser.RobotFileParser(); rp.set_url(robots_url)
         try:
             resp = self.session.get(robots_url, proxies=self._pick_proxy(), timeout=self.timeout, allow_redirects=False)
@@ -224,7 +230,9 @@ class WebScraper:
             import logging
             logging.getLogger(__name__).warning("robots.txt 读取失败，按放行处理: %s", exc)
             rp.allow_all = True
-        self._robots_cache[robots_url] = rp
+        if len(self._robots_cache) >= self.robots_cache_limit:
+            self._robots_cache.pop(next(iter(self._robots_cache)))
+        self._robots_cache[robots_url] = (time.monotonic(), rp)
         return rp
 
     def _validate_url(self, url: str) -> None:

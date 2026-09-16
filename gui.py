@@ -628,7 +628,7 @@ class ScraperGUI:
                 render=self.render_var.get(),
                 render_wait_until=self.render_wait_var.get(),
                 api_config=task.get("api_config"),
-                checkpoint_path=os.path.join(os.path.dirname(__file__), "checkpoints", (self.task_name_var.get().strip() or "current") + ".json"),
+                checkpoint_path=os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "InfoScraper", "checkpoints", (self.task_name_var.get().strip() or "current") + ".json"),
             )
             raw = scraper.iter_run(
                 list_selector=self.list_selector_var.get().strip(),

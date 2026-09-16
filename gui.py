@@ -32,12 +32,13 @@ from streaming import process_rows
 from cleaner import apply_clean_rules, CLEAN_RULES
 from templates import get_template, get_template_names
 from subdomain import collect_subdomains
+from version import __version__
 
 
 class ScraperGUI:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("通用信息收集爬虫")
+        self.root.title(f"通用信息收集爬虫 v{__version__}")
         self.root.geometry("1200x900")
         self.root.minsize(1100, 800)
 
@@ -739,6 +740,14 @@ class ScraperGUI:
         except Exception as exc:
             messagebox.showerror("错误", f"任务保存失败: {exc}")
             return
+        checkpoint_path = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "InfoScraper", "checkpoints", (self.task_name_var.get().strip() or "current") + ".json")
+        if os.path.exists(checkpoint_path):
+            choice = messagebox.askyesnocancel("发现未完成采集", "检测到上次未完成的断点。\n选择“是”继续，“否”重新开始，“取消”不启动。")
+            if choice is None:
+                return
+            if choice is False:
+                try: os.remove(checkpoint_path)
+                except OSError: pass
         messagebox.showinfo("完成", f"任务 '{name}' 已保存")
 
     def _load_task(self):

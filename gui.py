@@ -78,7 +78,7 @@ class ScraperGUI:
 
         config_tab = tk.Frame(notebook)
         notebook.add(config_tab, text="采集配置")
-        self._build_config_tab(config_tab)
+        self._build_scrollable_config_tab(config_tab)
 
         anti_tab = tk.Frame(notebook)
         notebook.add(anti_tab, text="反爬与代理")
@@ -122,6 +122,42 @@ class ScraperGUI:
         log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         self.log_text = scrolledtext.ScrolledText(log_frame, state=tk.DISABLED)
         self.log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+    def _build_scrollable_config_tab(self, parent):
+        """Keep the global action buttons visible on small or scaled displays."""
+        canvas = tk.Canvas(parent, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=canvas.yview)
+        content = tk.Frame(canvas)
+        content_window = canvas.create_window((0, 0), window=content, anchor=tk.NW)
+
+        def update_scroll_region(_event=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def fit_content_width(event):
+            canvas.itemconfigure(content_window, width=event.width)
+
+        content.bind("<Configure>", update_scroll_region)
+        canvas.bind("<Configure>", fit_content_width)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        def on_mousewheel(event):
+            if event.delta:
+                canvas.yview_scroll(-int(event.delta / 120), "units")
+            elif event.num == 4:
+                canvas.yview_scroll(-1, "units")
+            elif event.num == 5:
+                canvas.yview_scroll(1, "units")
+
+        # Bind on the content too, so scrolling works while an Entry or Treeview
+        # has the pointer instead of only over the blank canvas background.
+        for widget in (canvas, content):
+            widget.bind("<MouseWheel>", on_mousewheel)
+            widget.bind("<Button-4>", on_mousewheel)
+            widget.bind("<Button-5>", on_mousewheel)
+
+        self._build_config_tab(content)
 
     def _build_config_tab(self, parent):
         basic = tk.LabelFrame(parent, text="基本配置")

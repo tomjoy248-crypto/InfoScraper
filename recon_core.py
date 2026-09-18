@@ -9,6 +9,7 @@ import urllib.parse
 import urllib.request
 import urllib.error
 import re
+import time
 import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass
 from typing import Iterable, List
@@ -57,16 +58,18 @@ def crtsh_subdomains(domain: str, timeout: int = 15) -> List[Asset]:
     return list(assets.values())
 
 
-def enrich_dns(assets: Iterable[Asset]) -> List[Asset]:
+def enrich_dns(assets: Iterable[Asset], delay: float = 0.2) -> List[Asset]:
     result = []
     for asset in assets:
         ips = resolve_host(asset.value)
         asset.ip = ",".join(ips)
         result.append(asset)
+        if delay > 0:
+            time.sleep(delay)
     return result
 
 
-def probe_http(asset: Asset, timeout: int = 8) -> Asset:
+def probe_http(asset: Asset, timeout: int = 8, delay: float = 0.2) -> Asset:
     """Perform a single low-impact HTTP request and record basic metadata."""
     for scheme in ("https", "http"):
         url = f"{scheme}://{asset.value}/"
@@ -95,11 +98,15 @@ def probe_http(asset: Asset, timeout: int = 8) -> Asset:
                 expected = ("strict-transport-security", "content-security-policy", "x-frame-options", "x-content-type-options", "referrer-policy")
                 missing = [name for name in expected if not response.headers.get(name)]
                 asset.security_headers = "missing: " + ", ".join(missing) if missing else "all common headers present"
+                if delay > 0:
+                    time.sleep(delay)
                 return asset
         except (urllib.error.URLError, TimeoutError, OSError):
             continue
-        asset.status = "unreachable"
-        asset.fingerprint = ""
+    asset.status = "unreachable"
+    asset.fingerprint = ""
+    if delay > 0:
+        time.sleep(delay)
     return asset
 
 

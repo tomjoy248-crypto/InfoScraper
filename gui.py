@@ -695,7 +695,7 @@ class ScraperGUI:
                 discovered.setdefault(asset.value, asset)
             assets = [probe_http(enrich_network(a)) for a in enrich_dns(discovered.values())]
             public_urls = discover_public_urls(domain)
-            rows = [{"子域名": a.value, "来源": a.source, "IP": a.ip, "ASN": a.asn, "组织": a.organization, "CDN": a.cdn, "HTTP状态/标题": a.status, "技术指纹": a.fingerprint, "安全头": a.security_headers, "最终URL": a.final_url} for a in assets]
+            rows = [{"子域名": a.value, "来源": a.source, "IP": a.ip, "ASN": a.asn, "组织": a.organization, "国家": a.country, "城市": a.city, "C段": a.cidr, "CDN": a.cdn, "HTTP状态/标题": a.status, "技术指纹": a.fingerprint, "邮箱": a.emails, "API路径": a.api_paths, "安全头": a.security_headers, "最终URL": a.final_url} for a in assets]
             rows.extend({"子域名": "", "来源": a.source, "IP": "", "HTTP状态/标题": "", "技术指纹": "", "安全头": "", "最终URL": a.value} for a in public_urls)
             self.result_data = rows[:100]
             self.current_record_id = save_record_stream(self.task_name_var.get().strip() or "域名资产", domain, iter(rows))

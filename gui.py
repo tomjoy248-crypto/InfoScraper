@@ -33,7 +33,7 @@ from cleaner import apply_clean_rules, CLEAN_RULES
 from templates import get_template, get_template_names
 from subdomain import collect_subdomains
 from version import __version__
-from recon_core import crtsh_subdomains, enrich_dns, probe_http
+from recon_core import crtsh_subdomains, discover_public_urls, enrich_dns, probe_http
 
 
 class ScraperGUI:
@@ -691,7 +691,9 @@ class ScraperGUI:
             from recon_core import normalize_domain
             domain = normalize_domain(value)
             assets = [probe_http(a) for a in enrich_dns(crtsh_subdomains(domain))]
+            public_urls = discover_public_urls(domain)
             rows = [{"子域名": a.value, "来源": a.source, "IP": a.ip, "HTTP状态/标题": a.status, "技术指纹": a.fingerprint, "安全头": a.security_headers, "最终URL": a.final_url} for a in assets]
+            rows.extend({"子域名": "", "来源": a.source, "IP": "", "HTTP状态/标题": "", "技术指纹": "", "安全头": "", "最终URL": a.value} for a in public_urls)
             self.result_data = rows[:100]
             self.current_record_id = save_record_stream(self.task_name_var.get().strip() or "域名资产", domain, iter(rows))
             self.root.after(0, self._show_results)

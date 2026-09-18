@@ -25,6 +25,9 @@ class Asset:
     fingerprint: str = ""
     security_headers: str = ""
     final_url: str = ""
+    asn: str = ""
+    organization: str = ""
+    cdn: str = ""
 
 
 def normalize_domain(value: str) -> str:
@@ -58,6 +61,25 @@ def crtsh_subdomains(domain: str, timeout: int = 15) -> List[Asset]:
     return list(assets.values())
 
 
+def hackertarget_subdomains(domain: str, timeout: int = 15) -> List[Asset]:
+    """Use the public hostsearch endpoint as a second passive source."""
+    request = urllib.request.Request(
+        f"https://api.hackertarget.com/hostsearch/?q={urllib.parse.quote(domain)}",
+        headers={"User-Agent": "InfoScraper/4.0"},
+    )
+    assets = {}
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            text = response.read().decode("utf-8", errors="replace")
+        for line in text.splitlines():
+            host = normalize_domain(line.split(",", 1)[0])
+            if host.endswith("." + domain):
+                assets[host] = Asset(host, "hackertarget")
+    except (urllib.error.URLError, TimeoutError, OSError):
+        pass
+    return list(assets.values())
+
+
 def enrich_dns(assets: Iterable[Asset], delay: float = 0.2) -> List[Asset]:
     result = []
     for asset in assets:
@@ -67,6 +89,26 @@ def enrich_dns(assets: Iterable[Asset], delay: float = 0.2) -> List[Asset]:
         if delay > 0:
             time.sleep(delay)
     return result
+
+
+def enrich_network(asset: Asset, timeout: int = 8) -> Asset:
+    """Add public IP ownership/ASN metadata and a conservative CDN hint."""
+    ip = asset.ip.split(",", 1)[0] if asset.ip else ""
+    if not ip:
+        return asset
+    try:
+        request = urllib.request.Request(f"https://ipwho.is/{urllib.parse.quote(ip)}", headers={"User-Agent": "InfoScraper/4.0"})
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            data = json.loads(response.read().decode("utf-8", errors="replace"))
+        connection = data.get("connection") or {}
+        asset.asn = str(connection.get("asn") or "")
+        asset.organization = str(connection.get("org") or connection.get("isp") or "")
+        text = (asset.organization + " " + str(connection.get("isp") or "")).lower()
+        cdn_markers = ("cloudflare", "akamai", "fastly", "cloudfront", "bunny", "incapsula")
+        asset.cdn = "yes" if any(marker in text for marker in cdn_markers) else "unknown"
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        pass
+    return asset
 
 
 def probe_http(asset: Asset, timeout: int = 8, delay: float = 0.2) -> Asset:

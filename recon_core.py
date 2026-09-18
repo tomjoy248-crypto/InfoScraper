@@ -10,6 +10,7 @@ import urllib.request
 import urllib.error
 import re
 import time
+import ipaddress
 import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass
 from typing import Iterable, List
@@ -28,6 +29,11 @@ class Asset:
     asn: str = ""
     organization: str = ""
     cdn: str = ""
+    country: str = ""
+    city: str = ""
+    cidr: str = ""
+    emails: str = ""
+    api_paths: str = ""
 
 
 def normalize_domain(value: str) -> str:
@@ -103,6 +109,12 @@ def enrich_network(asset: Asset, timeout: int = 8) -> Asset:
         connection = data.get("connection") or {}
         asset.asn = str(connection.get("asn") or "")
         asset.organization = str(connection.get("org") or connection.get("isp") or "")
+        asset.country = str(data.get("country") or "")
+        asset.city = str(data.get("city") or "")
+        try:
+            asset.cidr = str(ipaddress.ip_network(f"{ip}/24", strict=False))
+        except ValueError:
+            asset.cidr = ""
         text = (asset.organization + " " + str(connection.get("isp") or "")).lower()
         cdn_markers = ("cloudflare", "akamai", "fastly", "cloudfront", "bunny", "incapsula")
         asset.cdn = "yes" if any(marker in text for marker in cdn_markers) else "unknown"
@@ -137,6 +149,8 @@ def probe_http(asset: Asset, timeout: int = 8, delay: float = 0.2) -> Asset:
                     if marker in page and name not in signals:
                         signals.append(name)
                 asset.fingerprint = ", ".join(signals)
+                asset.emails = ",".join(sorted(set(re.findall(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", body, re.I))))
+                asset.api_paths = ",".join(sorted(set(re.findall(r"(?:/api/|/graphql|/rest/)[A-Za-z0-9_./?=&-]*", body, re.I)))[:100])
                 expected = ("strict-transport-security", "content-security-policy", "x-frame-options", "x-content-type-options", "referrer-policy")
                 missing = [name for name in expected if not response.headers.get(name)]
                 asset.security_headers = "missing: " + ", ".join(missing) if missing else "all common headers present"
@@ -169,6 +183,19 @@ def discover_public_urls(domain: str, timeout: int = 10) -> List[Asset]:
         except (urllib.error.URLError, TimeoutError, OSError, ET.ParseError):
             continue
     return list(discovered.values())
+
+
+def extract_public_contacts(url: str, timeout: int = 10) -> tuple[str, str]:
+    """Extract public email addresses and likely API paths from one HTML page."""
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "InfoScraper/4.0"})
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            text = response.read(2 * 1024 * 1024).decode("utf-8", errors="replace")
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return "", ""
+    emails = sorted(set(re.findall(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", text, re.I)))
+    paths = sorted(set(re.findall(r"(?:/api/|/graphql|/rest/)[A-Za-z0-9_./?=&-]*", text, re.I)))
+    return ",".join(emails), ",".join(paths[:100])
 
 
 def export_assets(assets: Iterable[Asset], path: str) -> None:

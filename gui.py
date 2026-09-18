@@ -33,6 +33,7 @@ from cleaner import apply_clean_rules, CLEAN_RULES
 from templates import get_template, get_template_names
 from subdomain import collect_subdomains
 from version import __version__
+from recon_core import crtsh_subdomains, enrich_dns, probe_http
 
 
 class ScraperGUI:
@@ -111,6 +112,7 @@ class ScraperGUI:
         btn_frame.pack(fill=tk.X, padx=10, pady=5)
         ttk.Button(btn_frame, text="开始采集", command=self._start_scrape).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="扫描页面资产", command=self._start_asset_scan).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="收集域名资产", command=self._start_domain_recon).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="导出数据", command=self._export).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="清空日志", command=self._clear_log).pack(side=tk.LEFT, padx=5)
 
@@ -675,6 +677,28 @@ class ScraperGUI:
         self.result_data.clear(); self.raw_data.clear()
         self.status_var.set("资产扫描中...")
         threading.Thread(target=self._asset_scan_worker, daemon=True).start()
+
+    def _start_domain_recon(self):
+        domain = self.url_var.get().strip()
+        if not domain:
+            messagebox.showwarning("提示", "请在起始 URL 中填写根域名")
+            return
+        self.status_var.set("域名资产收集中...")
+        threading.Thread(target=self._domain_recon_worker, args=(domain,), daemon=True).start()
+
+    def _domain_recon_worker(self, value):
+        try:
+            from recon_core import normalize_domain
+            domain = normalize_domain(value)
+            assets = [probe_http(a) for a in enrich_dns(crtsh_subdomains(domain))]
+            rows = [{"子域名": a.value, "来源": a.source, "IP": a.ip, "HTTP状态/标题": a.status, "技术指纹": a.fingerprint, "安全头": a.security_headers, "最终URL": a.final_url} for a in assets]
+            self.result_data = rows[:100]
+            self.current_record_id = save_record_stream(self.task_name_var.get().strip() or "域名资产", domain, iter(rows))
+            self.root.after(0, self._show_results)
+            self.root.after(0, lambda: self.status_var.set(f"域名资产收集完成，共 {len(rows)} 条"))
+        except Exception as exc:
+            self.root.after(0, lambda: self._log(f"域名资产收集失败: {exc}"))
+            self.root.after(0, lambda: self.status_var.set("域名资产收集失败"))
 
     def _asset_scan_worker(self):
         scraper = None

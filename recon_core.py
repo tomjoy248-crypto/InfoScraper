@@ -9,6 +9,7 @@ import urllib.parse
 import urllib.request
 import urllib.error
 import re
+import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass
 from typing import Iterable, List
 
@@ -100,6 +101,25 @@ def probe_http(asset: Asset, timeout: int = 8) -> Asset:
         asset.status = "unreachable"
         asset.fingerprint = ""
     return asset
+
+
+def discover_public_urls(domain: str, timeout: int = 10) -> List[Asset]:
+    """Read public robots/sitemap files without crawling arbitrary paths."""
+    base = f"https://{domain}/"
+    discovered = {}
+    for path, kind in (("robots.txt", "robots"), ("sitemap.xml", "sitemap")):
+        try:
+            request = urllib.request.Request(base + path, headers={"User-Agent": "InfoScraper/4.0"})
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                text = response.read(2 * 1024 * 1024).decode("utf-8", errors="replace")
+            urls = re.findall(r"(?im)^\s*(?:allow|disallow|sitemap):\s*(\S+)", text) if kind == "robots" else re.findall(r"<loc>(.*?)</loc>", text, re.I | re.S)
+            for value in urls:
+                value = urllib.parse.urljoin(base, value.strip())
+                if value.startswith(("http://", "https://")):
+                    discovered[value] = Asset(value, kind, "url")
+        except (urllib.error.URLError, TimeoutError, OSError, ET.ParseError):
+            continue
+    return list(discovered.values())
 
 
 def export_assets(assets: Iterable[Asset], path: str) -> None:

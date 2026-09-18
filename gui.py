@@ -110,6 +110,7 @@ class ScraperGUI:
         btn_frame = tk.Frame(self.root)
         btn_frame.pack(fill=tk.X, padx=10, pady=5)
         ttk.Button(btn_frame, text="开始采集", command=self._start_scrape).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="扫描页面资产", command=self._start_asset_scan).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="导出数据", command=self._export).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="清空日志", command=self._clear_log).pack(side=tk.LEFT, padx=5)
 
@@ -185,6 +186,11 @@ class ScraperGUI:
         tk.Entry(basic, textvariable=self.cookie_var).grid(row=4, column=1, sticky=tk.EW, padx=5, pady=2)
         self.save_cookie_var = tk.BooleanVar(value=False)
         tk.Checkbutton(basic, text="保存 Cookie（加密）", variable=self.save_cookie_var).grid(row=4, column=2, sticky=tk.W, padx=5, pady=2)
+
+        tk.Label(basic, text="授权域名白名单:").grid(row=6, column=0, sticky=tk.W, padx=5, pady=2)
+        self.trusted_hosts_var = tk.StringVar()
+        tk.Entry(basic, textvariable=self.trusted_hosts_var).grid(row=6, column=1, sticky=tk.EW, padx=5, pady=2)
+        tk.Label(basic, text="多个域名用逗号分隔，仅限已获授权目标").grid(row=6, column=2, sticky=tk.W, padx=5, pady=2)
 
         tk.Label(basic, text="User-Agent:").grid(row=5, column=0, sticky=tk.W, padx=5, pady=2)
         self.ua_var = tk.StringVar(value="Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
@@ -662,6 +668,30 @@ class ScraperGUI:
         thread = threading.Thread(target=self._scrape_worker, daemon=True)
         thread.start()
 
+    def _start_asset_scan(self):
+        if not self.url_var.get().strip():
+            messagebox.showwarning("提示", "请输入起始 URL")
+            return
+        self.result_data.clear(); self.raw_data.clear()
+        self.status_var.set("资产扫描中...")
+        threading.Thread(target=self._asset_scan_worker, daemon=True).start()
+
+    def _asset_scan_worker(self):
+        scraper = None
+        try:
+            task = self._collect_task_config()
+            scraper = WebScraper(start_url=self.url_var.get().strip(), headers={"User-Agent": self.ua_var.get().strip()} if self.ua_var.get().strip() else {}, cookies=self.cookie_var.get().strip() or None, retries=self.retries_var.get(), render=self.render_var.get(), render_wait_until=self.render_wait_var.get(), respect_robots=self.respect_robots_var.get(), trusted_hosts=task.get("trusted_hosts", []))
+            rows = scraper.extract_assets()
+            self.result_data = rows[:100]
+            self.current_record_id = save_record_stream(self.task_name_var.get().strip() or "资产扫描", self.url_var.get().strip(), iter(rows))
+            self.root.after(0, self._show_results)
+            self.root.after(0, lambda: self.status_var.set(f"资产扫描完成，共 {len(rows)} 条"))
+        except Exception as exc:
+            self.root.after(0, lambda: self._log(f"资产扫描失败: {exc}"))
+            self.root.after(0, lambda: self.status_var.set("资产扫描失败"))
+        finally:
+            if scraper is not None: scraper.close()
+
     def _scrape_worker(self):
         scraper = None
         try:
@@ -683,6 +713,7 @@ class ScraperGUI:
                 checkpoint_path=os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "InfoScraper", "checkpoints", (self.task_name_var.get().strip() or "current") + ".json"),
                 respect_robots=self.respect_robots_var.get(),
                 robots_fail_closed=self.robots_fail_closed_var.get(),
+                trusted_hosts=task.get("trusted_hosts", []),
             )
             raw = scraper.iter_run(
                 list_selector=self.list_selector_var.get().strip(),
@@ -835,6 +866,7 @@ class ScraperGUI:
             "cookie": self.cookie_var.get(),
             "save_cookie": self.save_cookie_var.get(),
             "ua": self.ua_var.get(),
+            "trusted_hosts": [h.strip() for h in self.trusted_hosts_var.get().split(",") if h.strip()],
             "max_pages": self.max_pages_var.get(),
             "page_mode": self.page_mode_var.get(),
             "page_selector": self.page_selector_var.get(),
@@ -878,6 +910,7 @@ class ScraperGUI:
         self.cookie_var.set(task.get("cookie", ""))
         self.save_cookie_var.set(bool(task.get("save_cookie", False)))
         self.ua_var.set(task.get("ua", ""))
+        self.trusted_hosts_var.set(",".join(task.get("trusted_hosts", [])))
         self.max_pages_var.set(task.get("max_pages", 1))
         self.page_mode_var.set(task.get("page_mode", "none"))
         self.page_selector_var.set(task.get("page_selector", "page"))
@@ -1035,6 +1068,7 @@ class ScraperGUI:
                 api_config=task.get("api_config"),
                 respect_robots=task.get("respect_robots", True),
                 robots_fail_closed=task.get("robots_fail_closed", False),
+                trusted_hosts=task.get("trusted_hosts", []),
             )
             raw_rows = scraper.iter_run(
                 list_selector=task["list_selector"],

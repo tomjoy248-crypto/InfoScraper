@@ -56,6 +56,7 @@ class WebScraper:
         cancellation_token: Optional[CancellationToken] = None,
         respect_robots: bool = True,
         robots_fail_closed: bool = False,
+        trusted_hosts: Optional[List[str]] = None,
         login_handler: Optional[Callable[[Any], bool]] = None,
         render_wait_until: str = "domcontentloaded",
     ):
@@ -78,6 +79,7 @@ class WebScraper:
         self.render_wait_until = render_wait_until if render_wait_until in {"domcontentloaded", "load", "networkidle"} else "domcontentloaded"
         self.respect_robots = respect_robots
         self.robots_fail_closed = robots_fail_closed
+        self.trusted_hosts = {h.strip().lower() for h in (trusted_hosts or []) if h and h.strip()}
         self._resolved_hosts: Dict[str, str] = {}
         self._robots_cache = {}
         self.robots_cache_ttl = 3600
@@ -255,9 +257,32 @@ class WebScraper:
             for value in first_all:
                 address = ipaddress.ip_address(value)
                 if address.is_private or address.is_loopback or address.is_link_local or address.is_reserved:
-                    raise ScraperError("出于安全原因，禁止访问内网或本机地址")
+                    if parsed.hostname.lower() not in self.trusted_hosts:
+                        raise ScraperError(f"目标解析到受保护地址 {value}；如已获授权，请将域名加入白名单")
         except socket.gaierror:
             pass
+
+    def extract_assets(self, url: Optional[str] = None) -> List[Dict[str, str]]:
+        """Extract same-page links and common resource URLs from an authorized page."""
+        target = url or self.start_url
+        html_text = self._fetch(target)
+        soup = BeautifulSoup(html_text, "lxml")
+        found: List[Dict[str, str]] = []
+        seen = set()
+        for tag, attr, kind in (("a", "href", "link"), ("img", "src", "image"),
+                                ("script", "src", "script"), ("link", "href", "stylesheet"),
+                                ("video", "src", "video"), ("source", "src", "media"),
+                                ("iframe", "src", "iframe")):
+            for node in soup.select(tag):
+                raw = (node.get(attr) or "").strip()
+                if not raw or raw.startswith(("#", "javascript:", "data:")):
+                    continue
+                absolute = urllib.parse.urljoin(target, raw)
+                if absolute in seen:
+                    continue
+                seen.add(absolute)
+                found.append({"type": kind, "url": absolute, "source": tag})
+        return found
 
     def _fetch_api(self, url: str) -> Any:
         """API 模式请求，返回解析后的 JSON。"""
@@ -833,4 +858,3 @@ class WebScraper:
         qs[param] = [str(value)]
         query = urllib.parse.urlencode(qs, doseq=True)
         return urllib.parse.urlunparse(parsed._replace(query=query))
-

@@ -731,7 +731,14 @@ class ScraperGUI:
 
     def _start_port_probe(self):
         host = (urlparse(self.url_var.get().strip()).hostname or self.url_var.get().strip().split("/")[0]).lower()
-        allowed = {item.strip().lower() for item in self.trusted_hosts_var.get().split(",") if item.strip()}
+        allowed = set()
+        for item in self.trusted_hosts_var.get().split(","):
+            raw = item.strip()
+            if not raw:
+                continue
+            parsed = urlparse(raw if "://" in raw else "//" + raw)
+            if parsed.hostname:
+                allowed.add(parsed.hostname.lower().strip("."))
         if not host or host not in allowed:
             messagebox.showwarning("授权限制", "请先在授权域名白名单中明确填写要探测的主机")
             return

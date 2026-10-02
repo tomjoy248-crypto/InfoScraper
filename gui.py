@@ -11,6 +11,7 @@ from exporter import export
 from v4_reporting import report_from_rows
 from v4_rules import evaluate
 from v4_executor import run_checks
+from v4_orchestrator import run_full
 from urllib.parse import urlparse
 from scraper import ScraperError, WebScraper
 from config import save_task, load_task, list_tasks
@@ -115,6 +116,7 @@ class ScraperGUI:
         btn_frame = tk.Frame(self.root)
         btn_frame.pack(fill=tk.X, padx=10, pady=5)
         ttk.Button(btn_frame, text="开始采集", command=self._start_scrape).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="一键全流程", command=self._start_full_recon).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="授权端口探测", command=self._start_port_probe).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="扫描页面资产", command=self._start_asset_scan).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="收集域名资产", command=self._start_domain_recon).pack(side=tk.LEFT, padx=5)
@@ -696,6 +698,34 @@ class ScraperGUI:
         ports = (21, 22, 25, 53, 80, 110, 143, 443, 3306, 5432, 6379, 8080, 8443)
         self.status_var.set("授权端口探测中...")
         threading.Thread(target=self._port_probe_worker, args=(host, ports), daemon=True).start()
+
+    def _start_full_recon(self):
+        target = self.url_var.get().strip()
+        if not target:
+            messagebox.showwarning("提示", "请输入 URL 或根域名")
+            return
+        host = (urlparse(target).hostname or target.split("/")[0]).lower()
+        allowed = {item.strip().lower() for item in self.trusted_hosts_var.get().split(",") if item.strip()}
+        self.status_var.set("一键全流程执行中...")
+        self.result_data.clear()
+        threading.Thread(target=self._full_recon_worker, args=(host, allowed), daemon=True).start()
+
+    def _full_recon_worker(self, host, allowed):
+        try:
+            data = run_full(host, allowed_host=host if host in allowed else "", max_ports=host in allowed,
+                            on_progress=lambda msg: self.root.after(0, lambda: self._log(msg)))
+            rows = []
+            rows.extend(data.get("assets", []))
+            rows.extend(data.get("public_urls", []))
+            rows.extend(data.get("ports", []))
+            self.result_data = rows[:100]
+            self.result_count = len(rows)
+            self.current_record_id = save_record_stream(self.task_name_var.get().strip() or "一键全流程", host, iter(rows))
+            self.root.after(0, self._show_results)
+            self.root.after(0, lambda: self.status_var.set(f"一键全流程完成，共 {len(rows)} 条"))
+        except Exception as exc:
+            self.root.after(0, lambda: self._log(f"一键全流程失败: {exc}"))
+            self.root.after(0, lambda: self.status_var.set("一键全流程失败"))
 
     def _port_probe_worker(self, host, ports):
         rows = []

@@ -36,9 +36,16 @@ def run_full(domain: str, allowed_host: str = "", max_ports: bool = False,
     log(f"发现 {len(discovered)} 个子域名，开始 DNS/IP 解析")
     assets = []
     try:
-        assets = [probe_http(enrich_network(item)) for item in enrich_dns(discovered.values())]
+        enriched = enrich_dns(discovered.values())
     except Exception as exc:
-        log(f"资产解析部分失败，已保留可用结果: {exc}")
+        log(f"DNS 解析批次失败，改用未解析主机继续: {exc}")
+        enriched = list(discovered.values())
+    for item in enriched:
+        try:
+            assets.append(probe_http(enrich_network(item)))
+        except Exception as exc:
+            log(f"主机 {item.value} 探测失败，已保留主机记录: {exc}")
+            assets.append(item)
     try:
         urls = discover_public_urls(domain)
     except Exception as exc:
@@ -58,6 +65,9 @@ def run_full(domain: str, allowed_host: str = "", max_ports: bool = False,
     if max_ports and allowed_host and allowed_host.lower() in {domain.lower(), *(item.value.lower() for item in assets)}:
         log("开始授权主机常见端口检查")
         ports = (21, 22, 25, 53, 80, 443, 3306, 5432, 6379, 8080, 8443)
-        result["ports"] = [item.__dict__ for item in run_checks([(allowed_host, port) for port in ports], cancelled=cancelled)]
+        try:
+            result["ports"] = [item.__dict__ for item in run_checks([(allowed_host, port) for port in ports], cancelled=cancelled)]
+        except Exception as exc:
+            log(f"端口检查失败，已跳过: {exc}")
     log("一键资产流程完成")
     return result

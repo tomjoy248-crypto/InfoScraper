@@ -39,7 +39,7 @@ from cleaner import apply_clean_rules, CLEAN_RULES
 from templates import get_template, get_template_names
 from subdomain import collect_subdomains
 from version import __version__
-from recon_core import crtsh_subdomains, discover_public_urls, enrich_dns, enrich_network, hackertarget_subdomains, probe_http
+from recon_core import crtsh_subdomains, discover_public_urls, enrich_dns, enrich_network, enrich_rdap, hackertarget_subdomains, probe_http
 
 
 class ScraperGUI:
@@ -810,7 +810,7 @@ class ScraperGUI:
             assets = []
             for asset in enrich_dns(discovered.values()):
                 try:
-                    assets.append(probe_http(enrich_network(asset)))
+                    assets.append(probe_http(enrich_rdap(enrich_network(asset))))
                 except Exception as exc:
                     self.root.after(0, lambda e=exc, h=asset.value: self._log(f"{h} 探测失败，已保留域名: {e}"))
                     assets.append(asset)
@@ -819,7 +819,7 @@ class ScraperGUI:
             except Exception as exc:
                 self.root.after(0, lambda e=exc: self._log(f"robots/sitemap 查询失败，已跳过: {e}"))
                 public_urls = []
-            rows = [{"子域名": a.value, "来源": a.source, "IP": a.ip, "ASN": a.asn, "组织": a.organization, "国家": a.country, "城市": a.city, "C段": a.cidr, "CDN": a.cdn, "HTTP状态/标题": a.status, "技术指纹": a.fingerprint, "邮箱": a.emails, "API路径": a.api_paths, "安全头": a.security_headers, "最终URL": a.final_url} for a in assets]
+            rows = [{"子域名": a.value, "来源": a.source, "IP": a.ip, "ASN": a.asn, "组织": a.organization, "WHOIS组织": a.whois_org, "WHOIS日期": a.whois_dates, "名称服务器": a.nameservers, "国家": a.country, "城市": a.city, "C段": a.cidr, "CDN": a.cdn, "HTTP状态/标题": a.status, "技术指纹": a.fingerprint, "邮箱": a.emails, "API路径": a.api_paths, "安全头": a.security_headers, "最终URL": a.final_url} for a in assets]
             rows.extend({"子域名": "", "来源": a.source, "IP": "", "HTTP状态/标题": "", "技术指纹": "", "安全头": "", "最终URL": a.value} for a in public_urls)
             self.result_data = rows[:100]
             self.result_count = len(rows)

@@ -724,7 +724,8 @@ class ScraperGUI:
         if not target:
             messagebox.showwarning("提示", "请输入 URL 或根域名")
             return
-        host = (urlparse(target).hostname or target.split("/")[0]).lower()
+        from recon_core import root_domain
+        host = root_domain(urlparse(target).hostname or target.split("/")[0])
         allowed = {item.strip().lower() for item in self.trusted_hosts_var.get().split(",") if item.strip()}
         self.status_var.set("一键全流程执行中...")
         self.result_data.clear()
@@ -738,6 +739,9 @@ class ScraperGUI:
             rows.extend(data.get("assets", []))
             rows.extend(data.get("public_urls", []))
             rows.extend(data.get("ports", []))
+            for record_type, values in data.get("dns", {}).items():
+                for value in values:
+                    rows.append({"type": "dns", "record_type": record_type, "value": value})
             self.result_data = rows[:100]
             self.result_count = len(rows)
             self.current_record_id = save_record_stream(self.task_name_var.get().strip() or "一键全流程", host, iter(rows))
@@ -769,8 +773,8 @@ class ScraperGUI:
         try:
             self.result_count = 0
             self.root.after(0, lambda: self._log("开始查询证书和公开 DNS 数据源..."))
-            from recon_core import normalize_domain
-            domain = normalize_domain(value)
+            from recon_core import root_domain
+            domain = root_domain(value)
             if not domain or "." not in domain:
                 raise ValueError("请输入有效根域名，例如 example.com")
             discovered = {a.value: a for a in crtsh_subdomains(domain)}

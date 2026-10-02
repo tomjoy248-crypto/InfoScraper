@@ -719,7 +719,7 @@ class ScraperGUI:
         try:
             task = self._collect_task_config()
             scraper = WebScraper(start_url=self.url_var.get().strip(), headers={"User-Agent": self.ua_var.get().strip()} if self.ua_var.get().strip() else {}, cookies=self.cookie_var.get().strip() or None, retries=self.retries_var.get(), render=self.render_var.get(), render_wait_until=self.render_wait_var.get(), respect_robots=self.respect_robots_var.get(), trusted_hosts=task.get("trusted_hosts", []))
-            rows = scraper.extract_assets()
+            rows = scraper.crawl_public_site(max_pages=25, max_depth=1)
             self.result_data = rows[:100]
             self.result_count = len(rows)
             self.current_record_id = save_record_stream(self.task_name_var.get().strip() or "资产扫描", self.url_var.get().strip(), iter(rows))

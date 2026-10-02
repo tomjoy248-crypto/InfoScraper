@@ -6,6 +6,8 @@ from typing import List, Dict
 from redact import redact
 
 def _safe_cell(value):
+    if isinstance(value, (list, tuple, set, dict)):
+        value = json.dumps(value, ensure_ascii=False, default=str)
     if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r"):
         return "'" + value
     return value

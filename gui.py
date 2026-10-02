@@ -688,8 +688,12 @@ class ScraperGUI:
 
     def _domain_recon_worker(self, value):
         try:
+            self.result_count = 0
+            self.root.after(0, lambda: self._log("开始查询证书和公开 DNS 数据源..."))
             from recon_core import normalize_domain
             domain = normalize_domain(value)
+            if not domain or "." not in domain:
+                raise ValueError("请输入有效根域名，例如 example.com")
             discovered = {a.value: a for a in crtsh_subdomains(domain)}
             for asset in hackertarget_subdomains(domain):
                 discovered.setdefault(asset.value, asset)
@@ -698,9 +702,11 @@ class ScraperGUI:
             rows = [{"子域名": a.value, "来源": a.source, "IP": a.ip, "ASN": a.asn, "组织": a.organization, "国家": a.country, "城市": a.city, "C段": a.cidr, "CDN": a.cdn, "HTTP状态/标题": a.status, "技术指纹": a.fingerprint, "邮箱": a.emails, "API路径": a.api_paths, "安全头": a.security_headers, "最终URL": a.final_url} for a in assets]
             rows.extend({"子域名": "", "来源": a.source, "IP": "", "HTTP状态/标题": "", "技术指纹": "", "安全头": "", "最终URL": a.value} for a in public_urls)
             self.result_data = rows[:100]
+            self.result_count = len(rows)
             self.current_record_id = save_record_stream(self.task_name_var.get().strip() or "域名资产", domain, iter(rows))
             self.root.after(0, self._show_results)
             self.root.after(0, lambda: self.status_var.set(f"域名资产收集完成，共 {len(rows)} 条"))
+            self.root.after(0, lambda: self._update_stat(len(rows), len(rows), round(time.time() - self.start_time, 2) if self.start_time else 0))
         except Exception as exc:
             self.root.after(0, lambda: self._log(f"域名资产收集失败: {exc}"))
             self.root.after(0, lambda: self.status_var.set("域名资产收集失败"))
@@ -712,6 +718,7 @@ class ScraperGUI:
             scraper = WebScraper(start_url=self.url_var.get().strip(), headers={"User-Agent": self.ua_var.get().strip()} if self.ua_var.get().strip() else {}, cookies=self.cookie_var.get().strip() or None, retries=self.retries_var.get(), render=self.render_var.get(), render_wait_until=self.render_wait_var.get(), respect_robots=self.respect_robots_var.get(), trusted_hosts=task.get("trusted_hosts", []))
             rows = scraper.extract_assets()
             self.result_data = rows[:100]
+            self.result_count = len(rows)
             self.current_record_id = save_record_stream(self.task_name_var.get().strip() or "资产扫描", self.url_var.get().strip(), iter(rows))
             self.root.after(0, self._show_results)
             self.root.after(0, lambda: self.status_var.set(f"资产扫描完成，共 {len(rows)} 条"))

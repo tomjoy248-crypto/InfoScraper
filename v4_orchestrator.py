@@ -10,6 +10,8 @@ from recon_core import (crtsh_subdomains, discover_public_urls, enrich_dns,
                         enrich_network, enrich_rdap, hackertarget_subdomains, probe_http, Asset)
 from v4_executor import run_checks
 from v4_dns import collect as collect_dns
+from v4_config import load_providers
+from v4_providers import shodan_host, virustotal_domain, securitytrails_subdomains
 
 
 def run_full(domain: str, allowed_host: str = "", max_ports: bool = False,
@@ -62,10 +64,32 @@ def run_full(domain: str, allowed_host: str = "", max_ports: bool = False,
     except Exception as exc:
         log(f"DNS 查询失败，已跳过: {exc}")
         dns = {}
+    provider_rows = []
+    providers = load_providers()
+    if providers.get("securitytrails") and not domain.replace(".", "").isdigit():
+        data = securitytrails_subdomains(domain, providers["securitytrails"])
+        if data.get("ok"):
+            provider_rows.extend({"type": "subdomain", "source": "securitytrails", "value": item} for item in data["items"])
+        else:
+            log(f"SecurityTrails 查询失败，已跳过: {data.get('error', '')}")
+    root_ip = next((item.ip.split(",", 1)[0] for item in assets if item.value == domain and item.ip), "")
+    if providers.get("shodan") and root_ip:
+        data = shodan_host(root_ip, providers["shodan"])
+        if data.get("ok"):
+            provider_rows.append({"type": "provider", "source": "shodan", "target": root_ip, "data": data["items"][0]})
+        else:
+            log(f"Shodan 查询失败，已跳过: {data.get('error', '')}")
+    if providers.get("virustotal") and "." in domain:
+        data = virustotal_domain(domain, providers["virustotal"])
+        if data.get("ok"):
+            provider_rows.append({"type": "provider", "source": "virustotal", "target": domain, "data": data["items"][0]})
+        else:
+            log(f"VirusTotal 查询失败，已跳过: {data.get('error', '')}")
     result = {
         "assets": [item.__dict__ for item in assets],
         "public_urls": [item.__dict__ for item in sorted({item.value: item for item in urls}.values(), key=lambda item: item.value)],
         "dns": dns,
+        "providers": provider_rows,
         "ports": [],
     }
     if max_ports and allowed_host and allowed_host.lower() in {domain.lower(), *(item.value.lower() for item in assets)}:

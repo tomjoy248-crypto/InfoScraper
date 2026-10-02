@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from threading import Event
 from typing import Callable, Dict, List
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from recon_core import (crtsh_subdomains, discover_public_urls, enrich_dns,
                         enrich_network, hackertarget_subdomains, probe_http, Asset)
@@ -40,12 +41,16 @@ def run_full(domain: str, allowed_host: str = "", max_ports: bool = False,
     except Exception as exc:
         log(f"DNS 解析批次失败，改用未解析主机继续: {exc}")
         enriched = list(discovered.values())
-    for item in enriched:
+    def inspect(item):
         try:
-            assets.append(probe_http(enrich_network(item)))
+            return probe_http(enrich_network(item))
         except Exception as exc:
             log(f"主机 {item.value} 探测失败，已保留主机记录: {exc}")
-            assets.append(item)
+            return item
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(enriched)))) as pool:
+        futures = [pool.submit(inspect, item) for item in enriched]
+        for future in as_completed(futures):
+            assets.append(future.result())
     try:
         urls = discover_public_urls(domain)
     except Exception as exc:

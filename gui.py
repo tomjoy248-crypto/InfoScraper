@@ -1,6 +1,7 @@
 import json
 import os
 import threading
+from threading import Event
 from concurrent.futures import ThreadPoolExecutor
 import time
 import uuid
@@ -144,6 +145,11 @@ class ScraperGUI:
             scraper.cancel()
             self.status_var.set("正在取消任务...")
             self._log("已请求取消当前采集任务")
+        recon_cancel = getattr(self, "_recon_cancel", None)
+        if recon_cancel is not None:
+            recon_cancel.set()
+            self.status_var.set("正在取消任务...")
+            self._log("已请求取消资产分析任务")
         else:
             self._log("当前没有可取消的采集任务")
 
@@ -743,11 +749,14 @@ class ScraperGUI:
         allowed = {item.strip().lower() for item in self.trusted_hosts_var.get().split(",") if item.strip()}
         self.status_var.set("一键全流程执行中...")
         self.result_data.clear()
+        self._recon_cancel = Event()
         threading.Thread(target=self._full_recon_worker, args=(host, allowed), daemon=True).start()
 
     def _full_recon_worker(self, host, allowed):
+        cancel_token = self._recon_cancel
         try:
             data = run_full(host, allowed_host=host if host in allowed else "", max_ports=host in allowed,
+                            cancelled=cancel_token,
                             on_progress=lambda msg: self.root.after(0, lambda: self._log(msg)))
             rows = []
             rows.extend(data.get("assets", []))
@@ -760,10 +769,12 @@ class ScraperGUI:
             self.result_count = len(rows)
             self.current_record_id = save_record_stream(self.task_name_var.get().strip() or "一键全流程", host, iter(rows))
             self.root.after(0, self._show_results)
-            self.root.after(0, lambda: self.status_var.set(f"一键全流程完成，共 {len(rows)} 条"))
+            self.root.after(0, lambda: self.status_var.set("一键全流程已取消" if cancel_token.is_set() else f"一键全流程完成，共 {len(rows)} 条"))
         except Exception as exc:
             self.root.after(0, lambda: self._log(f"一键全流程失败: {exc}"))
             self.root.after(0, lambda: self.status_var.set("一键全流程失败"))
+        finally:
+            self._recon_cancel = None
 
     def _port_probe_worker(self, host, ports):
         rows = []

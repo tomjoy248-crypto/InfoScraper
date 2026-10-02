@@ -79,6 +79,9 @@ def run_full(domain: str, allowed_host: str = "", max_ports: bool = False,
     with ThreadPoolExecutor(max_workers=max(1, len(provider_jobs))) as pool:
         provider_futures = {name: pool.submit(job) for name, job in provider_jobs.items()}
         for name, future in provider_futures.items():
+            if cancelled.is_set():
+                log("任务已取消，跳过剩余 Provider 查询")
+                break
             try:
                 data = future.result()
             except Exception as exc:
@@ -93,6 +96,7 @@ def run_full(domain: str, allowed_host: str = "", max_ports: bool = False,
                 provider_rows.append({"type": "provider", "source": name, "target": domain, "data": data["items"]})
             else:
                 log(f"{name} 查询失败，已跳过: {data.get('error', '')}")
+    provider_rows.sort(key=lambda row: (str(row.get("source", "")), str(row.get("target", row.get("value", "")))))
     result = {
         "assets": [item.__dict__ for item in assets],
         "public_urls": [item.__dict__ for item in sorted({item.value: item for item in urls}.values(), key=lambda item: item.value)],

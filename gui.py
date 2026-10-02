@@ -156,7 +156,7 @@ class ScraperGUI:
     def _open_provider_config(self):
         window = tk.Toplevel(self.root)
         window.title("API 配置")
-        window.geometry("520x260")
+        window.geometry("620x320")
         values = load_providers()
         fields = {}
         for row, name in enumerate(("fofa", "shodan", "virustotal", "securitytrails")):
@@ -164,15 +164,20 @@ class ScraperGUI:
             value = tk.StringVar(value=values.get(name, ""))
             tk.Entry(window, textvariable=value, show="*", width=48).grid(row=row, column=1, padx=8, pady=6)
             fields[name] = value
+        tk.Label(window, text="FOFA 邮箱:").grid(row=4, column=0, sticky=tk.W, padx=8, pady=6)
+        fofa_email = tk.StringVar(value=values.get("fofa_email", ""))
+        tk.Entry(window, textvariable=fofa_email, width=48).grid(row=4, column=1, padx=8, pady=6)
         def save():
-            clean, errors = validate_providers({name: value.get() for name, value in fields.items()})
+            values_to_save = {name: value.get() for name, value in fields.items()}
+            values_to_save["fofa_email"] = fofa_email.get().strip()
+            clean, errors = validate_providers(values_to_save)
             if errors:
                 messagebox.showwarning("配置检查", "；".join(errors))
                 return
             save_providers(clean)
             messagebox.showinfo("完成", "API 配置已保存到本机")
             window.destroy()
-        ttk.Button(window, text="保存", command=save).grid(row=5, column=1, sticky=tk.E, padx=8, pady=10)
+        ttk.Button(window, text="保存", command=save).grid(row=6, column=1, sticky=tk.E, padx=8, pady=10)
 
     def _build_scrollable_config_tab(self, parent):
         """Keep the global action buttons visible on small or scaled displays."""

@@ -786,20 +786,27 @@ class ScraperGUI:
             self.root.after(0, lambda: self._log("开始查询证书和公开 DNS 数据源..."))
             from recon_core import root_domain
             domain = root_domain(value)
-            if not domain or "." not in domain:
-                raise ValueError("请输入有效根域名，例如 example.com")
+            import ipaddress
+            try:
+                ipaddress.ip_address(domain)
+                is_ip = True
+            except ValueError:
+                is_ip = False
+            if not domain or (not is_ip and "." not in domain):
+                raise ValueError("请输入有效域名或 IP，例如 example.com")
             from recon_core import Asset
             discovered = {domain: Asset(domain, "input")}
-            try:
-                for a in crtsh_subdomains(domain):
-                    discovered.setdefault(a.value, a)
-            except Exception as exc:
-                self.root.after(0, lambda e=exc: self._log(f"crt.sh 查询失败，已跳过: {e}"))
-            try:
-                for asset in hackertarget_subdomains(domain):
-                    discovered.setdefault(asset.value, asset)
-            except Exception as exc:
-                self.root.after(0, lambda e=exc: self._log(f"Hackertarget 查询失败，已跳过: {e}"))
+            if not is_ip:
+                try:
+                    for a in crtsh_subdomains(domain):
+                        discovered.setdefault(a.value, a)
+                except Exception as exc:
+                    self.root.after(0, lambda e=exc: self._log(f"crt.sh 查询失败，已跳过: {e}"))
+                try:
+                    for asset in hackertarget_subdomains(domain):
+                        discovered.setdefault(asset.value, asset)
+                except Exception as exc:
+                    self.root.after(0, lambda e=exc: self._log(f"Hackertarget 查询失败，已跳过: {e}"))
             assets = []
             for asset in enrich_dns(discovered.values()):
                 try:

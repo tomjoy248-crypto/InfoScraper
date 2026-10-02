@@ -9,6 +9,7 @@ from tkinter import messagebox, ttk, scrolledtext, filedialog
 
 from exporter import export
 from v4_reporting import report_from_rows
+from v4_config import load_providers, save_providers
 from v4_rules import evaluate
 from v4_executor import run_checks
 from v4_orchestrator import run_full
@@ -71,6 +72,7 @@ class ScraperGUI:
         ttk.Button(top, text="保存任务", command=self._save_task).pack(side=tk.LEFT, padx=2)
         ttk.Button(top, text="加载任务", command=self._load_task).pack(side=tk.LEFT, padx=2)
         ttk.Button(top, text="任务列表", command=self._show_task_list).pack(side=tk.LEFT, padx=2)
+        ttk.Button(top, text="API 配置", command=self._open_provider_config).pack(side=tk.LEFT, padx=2)
         ttk.Separator(top, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=8, pady=2)
         tk.Label(top, text="模板:").pack(side=tk.LEFT)
         self.template_var = tk.StringVar()
@@ -134,6 +136,23 @@ class ScraperGUI:
         log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         self.log_text = scrolledtext.ScrolledText(log_frame, state=tk.DISABLED)
         self.log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+    def _open_provider_config(self):
+        window = tk.Toplevel(self.root)
+        window.title("API 配置")
+        window.geometry("520x260")
+        values = load_providers()
+        fields = {}
+        for row, name in enumerate(("fofa", "shodan", "virustotal", "securitytrails")):
+            tk.Label(window, text=name.upper() + " API Key:").grid(row=row, column=0, sticky=tk.W, padx=8, pady=6)
+            value = tk.StringVar(value=values.get(name, ""))
+            tk.Entry(window, textvariable=value, show="*", width=48).grid(row=row, column=1, padx=8, pady=6)
+            fields[name] = value
+        def save():
+            save_providers({name: value.get().strip() for name, value in fields.items()})
+            messagebox.showinfo("完成", "API 配置已保存到本机")
+            window.destroy()
+        ttk.Button(window, text="保存", command=save).grid(row=5, column=1, sticky=tk.E, padx=8, pady=10)
 
     def _build_scrollable_config_tab(self, parent):
         """Keep the global action buttons visible on small or scaled displays."""

@@ -269,6 +269,12 @@ class WebScraper:
         soup = BeautifulSoup(html_text, "lxml")
         found: List[Dict[str, str]] = []
         seen = set()
+        title = soup.title.get_text(" ", strip=True) if soup.title else ""
+        description = ""
+        meta = soup.select_one('meta[name="description"]')
+        if meta:
+            description = (meta.get("content") or "").strip()
+        found.append({"type": "page", "url": target, "source": "title", "title": title, "description": description})
         for tag, attr, kind in (("a", "href", "link"), ("img", "src", "image"),
                                 ("script", "src", "script"), ("link", "href", "stylesheet"),
                                 ("video", "src", "video"), ("source", "src", "media"),
@@ -281,7 +287,7 @@ class WebScraper:
                 if absolute in seen:
                     continue
                 seen.add(absolute)
-                found.append({"type": kind, "url": absolute, "source": tag})
+                found.append({"type": kind, "url": absolute, "source": tag, "title": "", "description": ""})
         return found
 
     def _fetch_api(self, url: str) -> Any:

@@ -36,6 +36,14 @@ class AssessmentReport:
                           ensure_ascii=False, indent=2)
 
     def write_html(self, path: str) -> None:
+        categories = {}
+        failures = []
+        for item in self.findings:
+            categories[item.title] = categories.get(item.title, 0) + 1
+            if "unreachable" in item.evidence.lower() or "失败" in item.evidence:
+                failures.append(item.target)
+        summary = "；".join(f"{html.escape(str(k))}: {v}" for k, v in sorted(categories.items())) or "无资产"
+        failed_html = "、".join(html.escape(str(x)) for x in failures[:100]) or "无"
         rows = []
         for item in self.findings:
             rows.append("<tr>" + "".join(
@@ -48,9 +56,11 @@ class AssessmentReport:
 table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:.45rem;text-align:left;vertical-align:top}
 th{background:#f2f2f2}.high{color:#b00020}.medium{color:#9a6700}.low{color:#176b2c}</style>
 <h1>安全评估报告</h1><p>目标：{target}</p><p>生成时间：{created}</p>
+<h2>采集摘要</h2><p>总记录：{total}；类型统计：{summary}</p><p>失败或不可达目标：{failed}</p>
 <table><thead><tr><th>类别</th><th>标题</th><th>目标</th><th>等级</th><th>证据</th><th>建议</th><th>来源</th></tr></thead>
 <tbody>{rows}</tbody></table></html>""".format(
-            target=html.escape(self.target), created=html.escape(self.created_at), rows="".join(rows)
+            target=html.escape(self.target), created=html.escape(self.created_at),
+            total=len(self.findings), summary=summary, failed=failed_html, rows="".join(rows)
         )
         Path(path).write_text(document, encoding="utf-8")
 

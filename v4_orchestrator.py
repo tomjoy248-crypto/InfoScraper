@@ -6,7 +6,7 @@ from threading import Event
 from typing import Callable, Dict, List
 
 from recon_core import (crtsh_subdomains, discover_public_urls, enrich_dns,
-                        enrich_network, hackertarget_subdomains, probe_http)
+                        enrich_network, hackertarget_subdomains, probe_http, Asset
 from v4_executor import run_checks
 from v4_dns import collect as collect_dns
 
@@ -18,7 +18,10 @@ def run_full(domain: str, allowed_host: str = "", max_ports: bool = False,
     cancelled = cancelled or Event()
     log = on_progress or (lambda _message: None)
     log("查询被动子域名数据源")
-    discovered = {}
+    # Always assess the host the user entered, even when passive sources return
+    # no subdomains. Otherwise a perfectly valid small site produces an empty
+    # asset table and appears broken.
+    discovered = {domain: Asset(domain, "input")}
     try:
         discovered.update({item.value: item for item in crtsh_subdomains(domain)})
     except Exception as exc:

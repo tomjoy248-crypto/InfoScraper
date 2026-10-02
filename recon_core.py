@@ -73,9 +73,17 @@ def resolve_host(host: str) -> List[str]:
 
 def enrich_rdap(asset: Asset, timeout: int = 8) -> Asset:
     """Add public RDAP registration metadata when the registry supports it."""
+    host = normalize_domain(asset.value)
+    try:
+        ipaddress.ip_address(host)
+        return asset
+    except ValueError:
+        pass
+    if not host or "." not in host:
+        return asset
     try:
         request = urllib.request.Request(
-            f"https://rdap.org/domain/{urllib.parse.quote(asset.value)}",
+            f"https://rdap.org/domain/{urllib.parse.quote(host)}",
             headers={"Accept": "application/rdap+json", "User-Agent": "InfoScraper/4.0"},
         )
         with urllib.request.urlopen(request, timeout=timeout) as response:

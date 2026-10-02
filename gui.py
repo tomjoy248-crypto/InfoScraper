@@ -772,6 +772,7 @@ class ScraperGUI:
     def _domain_recon_worker(self, value):
         try:
             self.result_count = 0
+            self.start_time = time.time()
             self.root.after(0, lambda: self._log("开始查询证书和公开 DNS 数据源..."))
             from recon_core import root_domain
             domain = root_domain(value)
@@ -779,12 +780,28 @@ class ScraperGUI:
                 raise ValueError("请输入有效根域名，例如 example.com")
             from recon_core import Asset
             discovered = {domain: Asset(domain, "input")}
-            for a in crtsh_subdomains(domain):
-                discovered.setdefault(a.value, a)
-            for asset in hackertarget_subdomains(domain):
-                discovered.setdefault(asset.value, asset)
-            assets = [probe_http(enrich_network(a)) for a in enrich_dns(discovered.values())]
-            public_urls = discover_public_urls(domain)
+            try:
+                for a in crtsh_subdomains(domain):
+                    discovered.setdefault(a.value, a)
+            except Exception as exc:
+                self.root.after(0, lambda e=exc: self._log(f"crt.sh 查询失败，已跳过: {e}"))
+            try:
+                for asset in hackertarget_subdomains(domain):
+                    discovered.setdefault(asset.value, asset)
+            except Exception as exc:
+                self.root.after(0, lambda e=exc: self._log(f"Hackertarget 查询失败，已跳过: {e}"))
+            assets = []
+            for asset in enrich_dns(discovered.values()):
+                try:
+                    assets.append(probe_http(enrich_network(asset)))
+                except Exception as exc:
+                    self.root.after(0, lambda e=exc, h=asset.value: self._log(f"{h} 探测失败，已保留域名: {e}"))
+                    assets.append(asset)
+            try:
+                public_urls = discover_public_urls(domain)
+            except Exception as exc:
+                self.root.after(0, lambda e=exc: self._log(f"robots/sitemap 查询失败，已跳过: {e}"))
+                public_urls = []
             rows = [{"子域名": a.value, "来源": a.source, "IP": a.ip, "ASN": a.asn, "组织": a.organization, "国家": a.country, "城市": a.city, "C段": a.cidr, "CDN": a.cdn, "HTTP状态/标题": a.status, "技术指纹": a.fingerprint, "邮箱": a.emails, "API路径": a.api_paths, "安全头": a.security_headers, "最终URL": a.final_url} for a in assets]
             rows.extend({"子域名": "", "来源": a.source, "IP": "", "HTTP状态/标题": "", "技术指纹": "", "安全头": "", "最终URL": a.value} for a in public_urls)
             self.result_data = rows[:100]

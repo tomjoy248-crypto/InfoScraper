@@ -34,6 +34,9 @@ class Asset:
     cidr: str = ""
     emails: str = ""
     api_paths: str = ""
+    whois_org: str = ""
+    whois_dates: str = ""
+    nameservers: str = ""
 
 
 def normalize_domain(value: str) -> str:
@@ -66,6 +69,35 @@ def resolve_host(host: str) -> List[str]:
         return sorted({item[4][0] for item in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)})
     except OSError:
         return []
+
+
+def enrich_rdap(asset: Asset, timeout: int = 8) -> Asset:
+    """Add public RDAP registration metadata when the registry supports it."""
+    try:
+        request = urllib.request.Request(
+            f"https://rdap.org/domain/{urllib.parse.quote(asset.value)}",
+            headers={"Accept": "application/rdap+json", "User-Agent": "InfoScraper/4.0"},
+        )
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            data = json.loads(response.read().decode("utf-8", errors="replace"))
+        entities = data.get("entities") or []
+        orgs = []
+        for entity in entities:
+            vcard = entity.get("vcardArray") or []
+            for field in vcard[1] if len(vcard) > 1 and isinstance(vcard[1], list) else []:
+                if len(field) > 3 and field[0] in {"fn", "org"} and field[3]:
+                    orgs.append(str(field[3]))
+        asset.whois_org = ", ".join(dict.fromkeys(orgs))
+        dates = []
+        for event in data.get("events") or []:
+            if event.get("eventAction") in {"registration", "expiration", "last changed"}:
+                dates.append(f"{event.get('eventAction')}: {event.get('eventDate', '')}")
+        asset.whois_dates = "; ".join(dates)
+        servers = [str(item.get("ldhName", "")).lower() for item in data.get("nameservers") or [] if item.get("ldhName")]
+        asset.nameservers = ", ".join(dict.fromkeys(servers))
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        pass
+    return asset
 
 
 def crtsh_subdomains(domain: str, timeout: int = 15) -> List[Asset]:

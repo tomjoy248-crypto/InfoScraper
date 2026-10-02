@@ -9,6 +9,7 @@ from recon_core import Asset, enrich_rdap, root_domain
 from v4_js import extract_html_endpoints
 from v4_reporting import report_from_rows
 from exporter import export_json
+from v4_providers import shodan_host, fofa_search
 
 
 class CoreSmokeTests(unittest.TestCase):
@@ -30,6 +31,10 @@ class CoreSmokeTests(unittest.TestCase):
             report.write_html(str(Path(folder) / "report.html"))
             export_json(rows, str(Path(folder) / "rows.json"))
             self.assertTrue(json.loads(Path(folder, "rows.json").read_text(encoding="utf-8")))
+
+    def test_provider_configuration_failures_are_local(self):
+        self.assertFalse(shodan_host("192.0.2.1", "")["ok"])
+        self.assertFalse(fofa_search('domain="example.com"', "abcdefgh")["ok"])
 
 
 if __name__ == "__main__":

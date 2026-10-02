@@ -248,9 +248,8 @@ class WebScraper:
             raise ScraperError("仅支持 http/https URL")
         try:
             first_all = {r[4][0] for r in socket.getaddrinfo(parsed.hostname, parsed.port or 443, type=socket.SOCK_STREAM)}
-            second_all = {r[4][0] for r in socket.getaddrinfo(parsed.hostname, parsed.port or 443, type=socket.SOCK_STREAM)}
-            if first_all != second_all or not first_all:
-                raise ScraperError("DNS 解析结果不稳定，已阻止请求")
+            if not first_all:
+                raise ScraperError("目标域名无法解析")
             first = sorted(first_all)[0]
             locked = self._resolved_hosts.get(parsed.hostname)
             if locked and locked != first:
@@ -325,8 +324,14 @@ class WebScraper:
                 if target_parsed.scheme in {"http", "https"} and target_parsed.hostname == root.hostname:
                     if depth < max_depth and target not in seen_pages:
                         queue.append((target, depth + 1))
-            for row in self.extract_assets(page_url):
-                if row["url"] != page_url:
+            # Asset extraction performs a second request. A transient failure
+            # must not discard the page already collected.
+            try:
+                page_assets = self.extract_assets(page_url)
+            except Exception:
+                page_assets = []
+            for row in page_assets:
+                if row.get("url") != page_url:
                     results.append(row)
             self._sleep_interruptibly(self.delay)
         unique = {}

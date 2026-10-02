@@ -9,7 +9,7 @@ from tkinter import messagebox, ttk, scrolledtext, filedialog
 
 from exporter import export
 from v4_reporting import report_from_rows
-from v4_config import load_providers, save_providers
+from v4_config import load_providers, save_providers, validate_providers
 from v4_rules import evaluate
 from v4_executor import run_checks
 from v4_orchestrator import run_full
@@ -159,7 +159,11 @@ class ScraperGUI:
             tk.Entry(window, textvariable=value, show="*", width=48).grid(row=row, column=1, padx=8, pady=6)
             fields[name] = value
         def save():
-            save_providers({name: value.get().strip() for name, value in fields.items()})
+            clean, errors = validate_providers({name: value.get() for name, value in fields.items()})
+            if errors:
+                messagebox.showwarning("配置检查", "；".join(errors))
+                return
+            save_providers(clean)
             messagebox.showinfo("完成", "API 配置已保存到本机")
             window.destroy()
         ttk.Button(window, text="保存", command=save).grid(row=5, column=1, sticky=tk.E, padx=8, pady=10)

@@ -51,6 +51,7 @@ def run_full(domain: str, allowed_host: str = "", max_ports: bool = False,
         futures = [pool.submit(inspect, item) for item in enriched]
         for future in as_completed(futures):
             assets.append(future.result())
+    assets = sorted({item.value: item for item in assets}.values(), key=lambda item: item.value.lower())
     try:
         urls = discover_public_urls(domain)
     except Exception as exc:
@@ -63,7 +64,7 @@ def run_full(domain: str, allowed_host: str = "", max_ports: bool = False,
         dns = {}
     result = {
         "assets": [item.__dict__ for item in assets],
-        "public_urls": [item.__dict__ for item in urls],
+        "public_urls": [item.__dict__ for item in sorted({item.value: item for item in urls}.values(), key=lambda item: item.value)],
         "dns": dns,
         "ports": [],
     }

@@ -769,6 +769,7 @@ class ScraperGUI:
             rows.extend(data.get("assets", []))
             rows.extend(data.get("public_urls", []))
             rows.extend(data.get("ports", []))
+            rows.extend(data.get("providers", []))
             for record_type, values in data.get("dns", {}).items():
                 for value in values:
                     rows.append({"type": "dns", "record_type": record_type, "value": value})

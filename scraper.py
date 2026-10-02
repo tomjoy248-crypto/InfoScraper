@@ -9,6 +9,7 @@ import ipaddress
 import socket
 import urllib.robotparser
 import io
+from collections import deque
 import time
 import checkpoint
 from cancellation import CancellationToken
@@ -289,6 +290,41 @@ class WebScraper:
                 seen.add(absolute)
                 found.append({"type": kind, "url": absolute, "source": tag, "title": "", "description": ""})
         return found
+
+    def crawl_public_site(self, url: Optional[str] = None, max_pages: int = 25, max_depth: int = 1) -> List[Dict[str, str]]:
+        """Crawl a bounded set of same-host public pages and collect their assets."""
+        start = url or self.start_url
+        root = urllib.parse.urlparse(start)
+        queue = deque([(start, 0)])
+        seen_pages = set()
+        results = []
+        while queue and len(seen_pages) < max_pages:
+            page_url, depth = queue.popleft()
+            parsed = urllib.parse.urlparse(page_url)
+            if parsed.hostname != root.hostname or page_url in seen_pages:
+                continue
+            seen_pages.add(page_url)
+            try:
+                html_text = self._fetch(page_url)
+            except Exception:
+                continue
+            soup = BeautifulSoup(html_text, "lxml")
+            title = soup.title.get_text(" ", strip=True) if soup.title else ""
+            results.append({"type": "page", "url": page_url, "source": "crawl", "title": title, "description": ""})
+            for node in soup.select("a[href]"):
+                target = urllib.parse.urljoin(page_url, (node.get("href") or "").strip())
+                target_parsed = urllib.parse.urlparse(target)
+                if target_parsed.scheme in {"http", "https"} and target_parsed.hostname == root.hostname:
+                    if depth < max_depth and target not in seen_pages:
+                        queue.append((target, depth + 1))
+            for row in self.extract_assets(page_url):
+                if row["url"] != page_url:
+                    results.append(row)
+            self._sleep_interruptibly(self.delay)
+        unique = {}
+        for row in results:
+            unique[(row.get("type"), row.get("url"))] = row
+        return list(unique.values())
 
     def _fetch_api(self, url: str) -> Any:
         """API 模式请求，返回解析后的 JSON。"""

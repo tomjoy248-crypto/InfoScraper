@@ -43,6 +43,17 @@ def normalize_domain(value: str) -> str:
     return value.strip(".")
 
 
+def root_domain(value: str) -> str:
+    """Best-effort registrable-domain fallback without external dependencies."""
+    host = normalize_domain(value)
+    labels = host.split(".")
+    if len(labels) <= 2:
+        return host
+    multi_level_suffixes = {"co.uk", "com.cn", "com.au", "co.jp", "com.br"}
+    suffix = ".".join(labels[-2:])
+    return ".".join(labels[-3:]) if suffix in multi_level_suffixes else ".".join(labels[-2:])
+
+
 def resolve_host(host: str) -> List[str]:
     try:
         return sorted({item[4][0] for item in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)})

@@ -105,6 +105,7 @@ class WebScraper:
         self._playwright_page = None
         self._pw = None
         self._browser = None
+        self._runtime_endpoints = set()
 
     def _update_headers(self):
         base = {"User-Agent": random.choice(USER_AGENT_POOL) if self.random_ua else USER_AGENT_POOL[0]}
@@ -302,6 +303,10 @@ class WebScraper:
             if script["source_map"]:
                 found.append({"type": "source-map", "url": script["source_map"],
                               "source": script["script"], "title": "", "description": ""})
+        for endpoint in sorted(self._runtime_endpoints):
+            if urllib.parse.urlparse(endpoint).hostname == urllib.parse.urlparse(target).hostname:
+                found.append({"type": "api", "url": endpoint,
+                              "source": "runtime-request", "title": "", "description": ""})
         for endpoint in extract_html_endpoints(html_text, target):
             found.append({"type": "api", "url": endpoint,
                           "source": "inline-config", "title": "", "description": ""})
@@ -467,6 +472,14 @@ class WebScraper:
             self._pw = sync_playwright().start()
             self._browser = self._pw.chromium.launch(headless=True)
             self._playwright_page = self._browser.new_page()
+            def remember_request(request):
+                url_value = request.url
+                parsed = urllib.parse.urlparse(url_value)
+                path = parsed.path.lower()
+                if parsed.scheme in {"http", "https"} and ("/api/" in path or "/graphql" in path or
+                        "/rest/" in path or path.endswith((".json", ".xml"))):
+                    self._runtime_endpoints.add(url_value)
+            self._playwright_page.on("request", remember_request)
             if self.cookies:
                 domain = urllib.parse.urlparse(url).netloc
                 prefix = "." if len(domain.split(".")) > 1 else ""

@@ -55,8 +55,11 @@ def crtsh_subdomains(domain: str, timeout: int = 15) -> List[Asset]:
     request = urllib.request.Request(
         f"https://crt.sh/?{query}", headers={"User-Agent": "InfoScraper/4.0"}
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        rows = json.loads(response.read().decode("utf-8", errors="replace"))
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            rows = json.loads(response.read().decode("utf-8", errors="replace"))
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        return []
     assets = {}
     for row in rows:
         for name in str(row.get("name_value", "")).splitlines():
@@ -149,7 +152,7 @@ def probe_http(asset: Asset, timeout: int = 8, delay: float = 0.2) -> Asset:
                     if marker in page and name not in signals:
                         signals.append(name)
                 asset.fingerprint = ", ".join(signals)
-                asset.emails = ",".join(sorted(set(re.findall(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", body, re.I))))
+                asset.emails = ",".join(sorted(set(re.findall(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", body, re.I))))
                 asset.api_paths = ",".join(sorted(set(re.findall(r"(?:/api/|/graphql|/rest/)[A-Za-z0-9_./?=&-]*", body, re.I)))[:100])
                 expected = ("strict-transport-security", "content-security-policy", "x-frame-options", "x-content-type-options", "referrer-policy")
                 missing = [name for name in expected if not response.headers.get(name)]

@@ -161,13 +161,26 @@ def probe_http(asset: Asset, timeout: int = 8, delay: float = 0.2) -> Asset:
                 powered = (response.headers.get("X-Powered-By") or "").lower()
                 headers = f"{server} {powered}".lower()
                 for name, marker in (("Nginx", "nginx"), ("Apache", "apache"), ("IIS", "microsoft-iis"),
-                                     ("PHP", "php"), ("ASP.NET", "asp.net")):
+                                     ("Caddy", "caddy"), ("LiteSpeed", "litespeed"),
+                                     ("PHP", "php"), ("ASP.NET", "asp.net"),
+                                     ("Express", "express"), ("Gunicorn", "gunicorn")):
                     if marker in headers:
                         signals.append(name)
                 page = body.lower()
                 for name, marker in (("WordPress", "wp-content"), ("Laravel", "laravel_session"),
                                      ("Django", "csrfmiddlewaretoken"), ("Vue", "vue"), ("React", "react")):
                     if marker in page and name not in signals:
+                        signals.append(name)
+                for name, markers in (("Next.js", ("/_next/", "__next_data__")),
+                                      ("Nuxt", ("/_nuxt/", "__nuxt")),
+                                      ("Angular", ("ng-version", "angular")),
+                                      ("Bootstrap", ("bootstrap.min.", "bootstrap.css")),
+                                      ("jQuery", ("jquery.min.", "jquery-")),
+                                      ("Shopify", ("cdn.shopify.com", "shopify")),
+                                      ("Drupal", ("drupalSettings", "/sites/default/files/")),
+                                      ("Matomo", ("matomo.js", "_paq.push")),
+                                      ("Google Analytics", ("google-analytics.com", "gtag("))):
+                    if any(marker in page for marker in markers) and name not in signals:
                         signals.append(name)
                 asset.fingerprint = ", ".join(signals)
                 asset.emails = ",".join(sorted(set(re.findall(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", body, re.I))))

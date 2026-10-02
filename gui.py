@@ -825,6 +825,9 @@ class ScraperGUI:
             self.current_record_id = save_record_stream(self.task_name_var.get().strip() or "资产扫描", self.url_var.get().strip(), iter(rows))
             self.root.after(0, self._show_results)
             self.root.after(0, lambda: self.status_var.set(f"资产扫描完成，共 {len(rows)} 条"))
+            self.root.after(0, lambda: self._update_stat(len(rows), len(rows), round(time.time() - self.start_time, 2) if self.start_time else 0))
+            self.root.after(0, self._refresh_history)
+            self.root.after(0, lambda: self._log(f"资产扫描结果已保存，记录 ID: {self.current_record_id}"))
         except Exception as exc:
             self.root.after(0, lambda: self._log(f"资产扫描失败: {exc}"))
             self.root.after(0, lambda: self.status_var.set("资产扫描失败"))

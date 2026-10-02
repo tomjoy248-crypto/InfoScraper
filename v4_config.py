@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Dict
 import secure_storage
 
-SUPPORTED_PROVIDERS = ("fofa", "shodan", "virustotal", "securitytrails")
+SUPPORTED_PROVIDERS = ("fofa", "fofa_email", "shodan", "virustotal", "securitytrails")
 
 
 def validate_providers(values: Dict[str, str]) -> tuple[Dict[str, str], list[str]]:

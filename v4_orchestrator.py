@@ -66,31 +66,33 @@ def run_full(domain: str, allowed_host: str = "", max_ports: bool = False,
         dns = {}
     provider_rows = []
     providers = load_providers()
-    if providers.get("securitytrails") and not domain.replace(".", "").isdigit():
-        data = securitytrails_subdomains(domain, providers["securitytrails"])
-        if data.get("ok"):
-            provider_rows.extend({"type": "subdomain", "source": "securitytrails", "value": item} for item in data["items"])
-        else:
-            log(f"SecurityTrails 查询失败，已跳过: {data.get('error', '')}")
     root_ip = next((item.ip.split(",", 1)[0] for item in assets if item.value == domain and item.ip), "")
+    provider_jobs = {}
+    if providers.get("securitytrails") and not domain.replace(".", "").isdigit():
+        provider_jobs["securitytrails"] = lambda: securitytrails_subdomains(domain, providers["securitytrails"])
     if providers.get("shodan") and root_ip:
-        data = shodan_host(root_ip, providers["shodan"])
-        if data.get("ok"):
-            provider_rows.append({"type": "provider", "source": "shodan", "target": root_ip, "data": data["items"][0]})
-        else:
-            log(f"Shodan 查询失败，已跳过: {data.get('error', '')}")
+        provider_jobs["shodan"] = lambda: shodan_host(root_ip, providers["shodan"])
     if providers.get("virustotal") and "." in domain:
-        data = virustotal_domain(domain, providers["virustotal"])
-        if data.get("ok"):
-            provider_rows.append({"type": "provider", "source": "virustotal", "target": domain, "data": data["items"][0]})
-        else:
-            log(f"VirusTotal 查询失败，已跳过: {data.get('error', '')}")
+        provider_jobs["virustotal"] = lambda: virustotal_domain(domain, providers["virustotal"])
     if providers.get("fofa") and providers.get("fofa_email"):
-        data = fofa_search(f'domain="{domain}"', providers["fofa"], providers["fofa_email"])
-        if data.get("ok"):
-            provider_rows.append({"type": "provider", "source": "fofa", "target": domain, "data": data["items"]})
-        else:
-            log(f"FOFA 查询失败，已跳过: {data.get('error', '')}")
+        provider_jobs["fofa"] = lambda: fofa_search(f'domain="{domain}"', providers["fofa"], providers["fofa_email"])
+    with ThreadPoolExecutor(max_workers=max(1, len(provider_jobs))) as pool:
+        provider_futures = {name: pool.submit(job) for name, job in provider_jobs.items()}
+        for name, future in provider_futures.items():
+            try:
+                data = future.result()
+            except Exception as exc:
+                log(f"{name} 查询异常，已跳过: {exc}")
+                continue
+            if name == "securitytrails" and data.get("ok"):
+                provider_rows.extend({"type": "subdomain", "source": name, "value": item} for item in data["items"])
+            elif name in {"shodan", "virustotal"} and data.get("ok"):
+                target = root_ip if name == "shodan" else domain
+                provider_rows.append({"type": "provider", "source": name, "target": target, "data": data["items"][0]})
+            elif name == "fofa" and data.get("ok"):
+                provider_rows.append({"type": "provider", "source": name, "target": domain, "data": data["items"]})
+            else:
+                log(f"{name} 查询失败，已跳过: {data.get('error', '')}")
     result = {
         "assets": [item.__dict__ for item in assets],
         "public_urls": [item.__dict__ for item in sorted({item.value: item for item in urls}.values(), key=lambda item: item.value)],

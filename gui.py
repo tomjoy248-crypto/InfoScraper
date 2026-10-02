@@ -777,7 +777,10 @@ class ScraperGUI:
             domain = root_domain(value)
             if not domain or "." not in domain:
                 raise ValueError("请输入有效根域名，例如 example.com")
-            discovered = {a.value: a for a in crtsh_subdomains(domain)}
+            from recon_core import Asset
+            discovered = {domain: Asset(domain, "input")}
+            for a in crtsh_subdomains(domain):
+                discovered.setdefault(a.value, a)
             for asset in hackertarget_subdomains(domain):
                 discovered.setdefault(asset.value, asset)
             assets = [probe_http(enrich_network(a)) for a in enrich_dns(discovered.values())]

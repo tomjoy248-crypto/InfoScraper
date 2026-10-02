@@ -10,6 +10,8 @@ from tkinter import messagebox, ttk, scrolledtext, filedialog
 from exporter import export
 from v4_reporting import report_from_rows
 from v4_rules import evaluate
+from v4_executor import run_checks
+from urllib.parse import urlparse
 from scraper import ScraperError, WebScraper
 from config import save_task, load_task, list_tasks
 from database import (
@@ -113,6 +115,7 @@ class ScraperGUI:
         btn_frame = tk.Frame(self.root)
         btn_frame.pack(fill=tk.X, padx=10, pady=5)
         ttk.Button(btn_frame, text="开始采集", command=self._start_scrape).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="授权端口探测", command=self._start_port_probe).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="扫描页面资产", command=self._start_asset_scan).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="收集域名资产", command=self._start_domain_recon).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="导出数据", command=self._export).pack(side=tk.LEFT, padx=5)
@@ -683,6 +686,26 @@ class ScraperGUI:
         self.result_data.clear(); self.raw_data.clear()
         self.status_var.set("资产扫描中...")
         threading.Thread(target=self._asset_scan_worker, daemon=True).start()
+
+    def _start_port_probe(self):
+        host = (urlparse(self.url_var.get().strip()).hostname or self.url_var.get().strip().split("/")[0]).lower()
+        allowed = {item.strip().lower() for item in self.trusted_hosts_var.get().split(",") if item.strip()}
+        if not host or host not in allowed:
+            messagebox.showwarning("授权限制", "请先在授权域名白名单中明确填写要探测的主机")
+            return
+        ports = (21, 22, 25, 53, 80, 110, 143, 443, 3306, 5432, 6379, 8080, 8443)
+        self.status_var.set("授权端口探测中...")
+        threading.Thread(target=self._port_probe_worker, args=(host, ports), daemon=True).start()
+
+    def _port_probe_worker(self, host, ports):
+        rows = []
+        def progress(done, total, result):
+            self.root.after(0, lambda: self.status_var.set(f"端口探测 {done}/{total}"))
+        for result in run_checks([(host, port) for port in ports], on_progress=progress):
+            rows.append({"主机": result.host, "端口": result.port, "状态": result.state, "服务": result.service})
+        self.result_data = rows
+        self.root.after(0, self._show_results)
+        self.root.after(0, lambda: self.status_var.set(f"端口探测完成，共 {len(rows)} 个结果"))
 
     def _start_domain_recon(self):
         domain = self.url_var.get().strip()

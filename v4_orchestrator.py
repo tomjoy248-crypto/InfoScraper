@@ -11,7 +11,7 @@ from recon_core import (crtsh_subdomains, discover_public_urls, enrich_dns,
 from v4_executor import run_checks
 from v4_dns import collect as collect_dns
 from v4_config import load_providers
-from v4_providers import shodan_host, virustotal_domain, securitytrails_subdomains
+from v4_providers import shodan_host, virustotal_domain, securitytrails_subdomains, fofa_search
 
 
 def run_full(domain: str, allowed_host: str = "", max_ports: bool = False,
@@ -85,6 +85,12 @@ def run_full(domain: str, allowed_host: str = "", max_ports: bool = False,
             provider_rows.append({"type": "provider", "source": "virustotal", "target": domain, "data": data["items"][0]})
         else:
             log(f"VirusTotal 查询失败，已跳过: {data.get('error', '')}")
+    if providers.get("fofa") and providers.get("fofa_email"):
+        data = fofa_search(f'domain="{domain}"', providers["fofa"], providers["fofa_email"])
+        if data.get("ok"):
+            provider_rows.append({"type": "provider", "source": "fofa", "target": domain, "data": data["items"]})
+        else:
+            log(f"FOFA 查询失败，已跳过: {data.get('error', '')}")
     result = {
         "assets": [item.__dict__ for item in assets],
         "public_urls": [item.__dict__ for item in sorted({item.value: item for item in urls}.values(), key=lambda item: item.value)],

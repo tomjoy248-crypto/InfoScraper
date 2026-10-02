@@ -1,0 +1,68 @@
+name: Release Windows installer
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Sync installer version from tag
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          (Get-Content installer\setup.iss -Raw) -replace '#define MyAppVersion "[^"]+"', "#define MyAppVersion `"$version`"" | Set-Content installer\setup.iss -Encoding utf8
+          "__version__ = `"$version`"" | Set-Content version.py -Encoding ascii
+      - run: pip install -r requirements.txt pyinstaller
+      - run: pyinstaller --noconfirm --clean --onefile --windowed --name InfoScraper main.py
+      - run: copy dist\InfoScraper.exe installer\files\InfoScraper.exe
+      - name: Create installer archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force setup_output | Out-Null
+          Compress-Archive -Path dist\\InfoScraper.exe,README.md,USER_GUIDE.md -DestinationPath setup_output\\InfoScraper-Setup.zip -Force
+      - name: Build Inno Setup wizard
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force setup_output | Out-Null
+          choco install innosetup --no-progress -y
+          & "${env:ProgramFiles(x86)}\\Inno Setup 6\\ISCC.exe" installer\\setup.iss
+          # Keep the artifact path stable even if Inno Setup ignores OutputDir.
+          $built = Get-ChildItem -Path . -Filter 'InfoScraper-Setup.exe' -File -Recurse | Select-Object -First 1
+          if ($null -eq $built) { throw 'Inno Setup did not produce InfoScraper-Setup.exe' }
+          if ($built.FullName -ne (Join-Path (Resolve-Path setup_output) 'InfoScraper-Setup.exe')) {
+            Copy-Item $built.FullName setup_output\\InfoScraper-Setup.exe -Force
+          }
+      - name: Generate SHA256 checksums
+        shell: pwsh
+        run: |
+          Get-FileHash dist\\InfoScraper.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  InfoScraper.exe" } | Out-File setup_output\\SHA256SUMS.txt -Encoding ascii
+          Get-FileHash setup_output\\InfoScraper-Setup.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  InfoScraper-Setup.zip" } | Out-File setup_output\\SHA256SUMS.txt -Append -Encoding ascii
+          Get-FileHash setup_output\\InfoScraper-Setup.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  InfoScraper-Setup.exe" } | Out-File setup_output\\SHA256SUMS.txt -Append -Encoding ascii
+      - name: Verify release files
+        shell: pwsh
+        run: |
+          foreach ($f in @('dist\\InfoScraper.exe','setup_output\\InfoScraper-Setup.zip','setup_output\\InfoScraper-Setup.exe','setup_output\\SHA256SUMS.txt')) { if (!(Test-Path $f)) { throw "Missing release file: $f" } }
+          $lines = Get-Content setup_output\\SHA256SUMS.txt
+          foreach ($name in @('InfoScraper.exe','InfoScraper-Setup.zip','InfoScraper-Setup.exe')) { if (-not ($lines -match [regex]::Escape($name))) { throw "Missing checksum for $name" } }
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/InfoScraper.exe
+            setup_output/InfoScraper-Setup.zip
+            setup_output/InfoScraper-Setup.exe
+            setup_output/SHA256SUMS.txt
+      - name: Verify published release metadata
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $release = gh release view $env:GITHUB_REF_NAME --json assets --repo $env:GITHUB_REPOSITORY | ConvertFrom-Json
+          $names = @($release.assets | ForEach-Object { $_.name })
+          foreach ($name in @('InfoScraper.exe','InfoScraper-Setup.zip','InfoScraper-Setup.exe','SHA256SUMS.txt')) {
+            if ($names -notcontains $name) { throw "Published asset missing: $name" }
+          }

@@ -904,9 +904,22 @@ class ScraperGUI:
         self.status_var.set(f"采集完成，共 {total} 条")
         self._log(f"采集完成，共 {total} 条（预览前100条）")
         self.result_tree.delete(*self.result_tree.get_children())
-        if not self.result_data and not getattr(self, "current_record_id", None):
+        if not self.result_data:
+            self.result_tree["columns"] = ()
+            self._log("无结果：目标未返回可展示的数据")
             return
-        cols = list(self.result_data[0].keys())
+        # Workflows combine rows from different sources. Build a stable union
+        # of keys instead of assuming every row has the first row's schema.
+        cols = []
+        for row in self.result_data:
+            if isinstance(row, dict):
+                for key in row:
+                    if key not in cols:
+                        cols.append(key)
+        if not cols:
+            self.result_tree["columns"] = ()
+            self._log("无可显示的字段")
+            return
         self.result_tree["columns"] = cols
         for c in cols:
             self.result_tree.heading(c, text=c)

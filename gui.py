@@ -126,6 +126,7 @@ class ScraperGUI:
         ttk.Button(btn_frame, text="生成 HTML 报告", command=self._export_report).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="生成 PDF 报告", command=self._export_pdf_report).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="清空日志", command=self._clear_log).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="取消当前任务", command=self._cancel_current_task).pack(side=tk.LEFT, padx=5)
 
         self.progress = ttk.Progressbar(self.root, mode="determinate")
         self.progress.pack(fill=tk.X, padx=10, pady=5)
@@ -136,6 +137,15 @@ class ScraperGUI:
         log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         self.log_text = scrolledtext.ScrolledText(log_frame, state=tk.DISABLED)
         self.log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+    def _cancel_current_task(self):
+        scraper = getattr(self, "_active_scraper", None)
+        if scraper is not None:
+            scraper.cancel()
+            self.status_var.set("正在取消任务...")
+            self._log("已请求取消当前采集任务")
+        else:
+            self._log("当前没有可取消的采集任务")
 
     def _open_provider_config(self):
         window = tk.Toplevel(self.root)
@@ -819,6 +829,7 @@ class ScraperGUI:
         try:
             task = self._collect_task_config()
             scraper = WebScraper(start_url=self.url_var.get().strip(), headers={"User-Agent": self.ua_var.get().strip()} if self.ua_var.get().strip() else {}, cookies=self.cookie_var.get().strip() or None, retries=self.retries_var.get(), render=self.render_var.get(), render_wait_until=self.render_wait_var.get(), respect_robots=self.respect_robots_var.get(), trusted_hosts=task.get("trusted_hosts", []))
+            self._active_scraper = scraper
             rows = scraper.crawl_public_site(max_pages=25, max_depth=1)
             self.result_data = rows[:100]
             self.result_count = len(rows)
@@ -832,6 +843,8 @@ class ScraperGUI:
             self.root.after(0, lambda: self._log(f"资产扫描失败: {exc}"))
             self.root.after(0, lambda: self.status_var.set("资产扫描失败"))
         finally:
+            if self._active_scraper is scraper:
+                self._active_scraper = None
             if scraper is not None: scraper.close()
 
     def _scrape_worker(self):
@@ -857,6 +870,7 @@ class ScraperGUI:
                 robots_fail_closed=self.robots_fail_closed_var.get(),
                 trusted_hosts=task.get("trusted_hosts", []),
             )
+            self._active_scraper = scraper
             raw = scraper.iter_run(
                 list_selector=self.list_selector_var.get().strip(),
                 fields=self.fields,
@@ -911,6 +925,8 @@ class ScraperGUI:
             self.root.after(0, lambda: self._log(f"错误: {e}"))
             self.root.after(0, lambda: self.status_var.set("采集失败"))
         finally:
+            if self._active_scraper is scraper:
+                self._active_scraper = None
             if scraper is not None:
                 scraper.close()
 

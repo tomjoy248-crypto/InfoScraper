@@ -8,6 +8,8 @@ import tkinter as tk
 from tkinter import messagebox, ttk, scrolledtext, filedialog
 
 from exporter import export
+from v4_reporting import report_from_rows
+from v4_rules import evaluate
 from scraper import ScraperError, WebScraper
 from config import save_task, load_task, list_tasks
 from database import (
@@ -114,6 +116,7 @@ class ScraperGUI:
         ttk.Button(btn_frame, text="扫描页面资产", command=self._start_asset_scan).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="收集域名资产", command=self._start_domain_recon).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="导出数据", command=self._export).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="生成 HTML 报告", command=self._export_report).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="清空日志", command=self._clear_log).pack(side=tk.LEFT, padx=5)
 
         self.progress = ttk.Progressbar(self.root, mode="determinate")
@@ -851,6 +854,22 @@ class ScraperGUI:
             self._log(f"导出成功: {path}")
         except Exception as e:
             messagebox.showerror("错误", f"导出失败: {e}")
+
+    def _export_report(self):
+        if not self.result_data:
+            messagebox.showwarning("提示", "没有可生成报告的数据")
+            return
+        path = filedialog.asksaveasfilename(defaultextension=".html", filetypes=[("HTML 报告", "*.html")])
+        if not path:
+            return
+        try:
+            report = report_from_rows(self.url_var.get().strip(), self.result_data)
+            for finding in evaluate(self.result_data):
+                report.add(finding)
+            report.write_html(path)
+            messagebox.showinfo("完成", f"报告已生成: {path}")
+        except Exception as exc:
+            messagebox.showerror("错误", f"报告生成失败: {exc}")
 
     def _save_task(self):
         name = self.task_name_var.get().strip()

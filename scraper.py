@@ -187,7 +187,13 @@ class WebScraper:
         if self._should_stop():
             raise ScraperError("请求已取消")
         if self.render:
-            return self._fetch_render(url)
+            try:
+                return self._fetch_render(url)
+            except ScraperError:
+                # Rendering is optional. If Chromium is unavailable or the
+                # page times out, fall back to ordinary HTTP so static assets
+                # and the page shell are still collected.
+                self.render = False
         last_error = None
         for attempt in range(self.retries + 1):
             try:

@@ -18,6 +18,7 @@ from typing import Any, Callable, Dict, List, Optional
 import requests
 from bs4 import BeautifulSoup, Tag
 from lxml import html as lh
+from v4_js import inspect_scripts
 
 import jsonpath
 
@@ -289,6 +290,13 @@ class WebScraper:
                     continue
                 seen.add(absolute)
                 found.append({"type": kind, "url": absolute, "source": tag, "title": "", "description": ""})
+        for script in inspect_scripts(html_text, target):
+            for endpoint in script["endpoints"]:
+                found.append({"type": "api", "url": urllib.parse.urljoin(target, endpoint),
+                              "source": script["script"], "title": "", "description": ""})
+            if script["source_map"]:
+                found.append({"type": "source-map", "url": script["source_map"],
+                              "source": script["script"], "title": "", "description": ""})
         return found
 
     def crawl_public_site(self, url: Optional[str] = None, max_pages: int = 25, max_depth: int = 1) -> List[Dict[str, str]]:

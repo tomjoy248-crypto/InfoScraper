@@ -6,7 +6,7 @@ from threading import Event
 from typing import Callable, Dict, List
 
 from recon_core import (crtsh_subdomains, discover_public_urls, enrich_dns,
-                        enrich_network, hackertarget_subdomains, probe_http, Asset
+                        enrich_network, hackertarget_subdomains, probe_http, Asset)
 from v4_executor import run_checks
 from v4_dns import collect as collect_dns
 

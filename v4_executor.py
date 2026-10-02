@@ -22,8 +22,18 @@ COMMON_SERVICES = {80: "http", 443: "https", 8080: "http-alt", 8443: "https-alt"
 
 def check_port(host: str, port: int, timeout: float = 1.5) -> PortResult:
     try:
-        with socket.create_connection((host, port), timeout=timeout):
-            return PortResult(host, port, "open", COMMON_SERVICES.get(port, "unknown"))
+        with socket.create_connection((host, port), timeout=timeout) as connection:
+            service = COMMON_SERVICES.get(port, "unknown")
+            # Read-only banner peek: do not send probes or payloads.
+            connection.settimeout(min(timeout, 0.5))
+            try:
+                banner = connection.recv(256).decode("utf-8", errors="replace").strip()
+            except (OSError, TimeoutError):
+                banner = ""
+            if banner:
+                banner = " ".join(banner.split())[:180]
+                service = f"{service} | {banner}"
+            return PortResult(host, port, "open", service)
     except (OSError, TimeoutError):
         return PortResult(host, port, "closed")
 

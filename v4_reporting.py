@@ -54,6 +54,20 @@ th{background:#f2f2f2}.high{color:#b00020}.medium{color:#9a6700}.low{color:#176b
         )
         Path(path).write_text(document, encoding="utf-8")
 
+    def write_pdf(self, path: str) -> None:
+        """Render the same report to PDF using the optional Playwright runtime."""
+        import tempfile
+        from playwright.sync_api import sync_playwright
+        with tempfile.TemporaryDirectory() as folder:
+            html_path = Path(folder) / "report.html"
+            self.write_html(str(html_path))
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch(headless=True)
+                page = browser.new_page()
+                page.goto(html_path.as_uri(), wait_until="load")
+                page.pdf(path=path, format="A4", print_background=True)
+                browser.close()
+
 
 def report_from_rows(target: str, rows: Iterable[dict]) -> AssessmentReport:
     report = AssessmentReport(target)

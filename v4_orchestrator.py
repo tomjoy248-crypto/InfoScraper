@@ -7,7 +7,7 @@ from typing import Callable, Dict, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from recon_core import (crtsh_subdomains, discover_public_urls, enrich_dns,
-                        enrich_network, hackertarget_subdomains, probe_http, Asset)
+                        enrich_network, enrich_rdap, hackertarget_subdomains, probe_http, Asset)
 from v4_executor import run_checks
 from v4_dns import collect as collect_dns
 
@@ -43,7 +43,7 @@ def run_full(domain: str, allowed_host: str = "", max_ports: bool = False,
         enriched = list(discovered.values())
     def inspect(item):
         try:
-            return probe_http(enrich_network(item))
+            return probe_http(enrich_rdap(enrich_network(item)))
         except Exception as exc:
             log(f"主机 {item.value} 探测失败，已保留主机记录: {exc}")
             return item

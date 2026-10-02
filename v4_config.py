@@ -25,8 +25,16 @@ def load_providers() -> Dict[str, str]:
         value = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(value, dict):
             return {}
-        return {key: secure_storage.decrypt(str(item)) for key, item in value.items()}
-    except (OSError, ValueError):
+        result: Dict[str, str] = {}
+        for key, item in value.items():
+            try:
+                result[str(key)] = secure_storage.decrypt(str(item))
+            except Exception:
+                # A config copied from another Windows account, or an older
+                # encryption format, must not prevent the GUI from opening.
+                continue
+        return result
+    except (OSError, ValueError, TypeError):
         return {}
 
 

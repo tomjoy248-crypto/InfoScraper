@@ -231,6 +231,15 @@ def probe_http(asset: Asset, timeout: int = 8, delay: float = 0.2) -> Asset:
                 if delay > 0:
                     time.sleep(delay)
                 return asset
+        except urllib.error.HTTPError as exc:
+            # An HTTP response proves the host is reachable even when access
+            # is denied or the path is missing. Preserve that evidence.
+            asset.status = str(exc.code)
+            asset.final_url = getattr(exc, "url", url) or url
+            asset.fingerprint = "access denied" if exc.code in {401, 403, 429} else ""
+            if delay > 0:
+                time.sleep(delay)
+            return asset
         except (urllib.error.URLError, TimeoutError, OSError):
             continue
     asset.status = "unreachable"

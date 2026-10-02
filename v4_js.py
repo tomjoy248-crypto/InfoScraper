@@ -39,3 +39,14 @@ def inspect_script(url: str, timeout: int = 10) -> dict:
 
 def inspect_scripts(html: str, page_url: str) -> List[dict]:
     return [inspect_script(url) for url in script_urls(html, page_url)]
+
+
+def extract_html_endpoints(html: str, page_url: str) -> List[str]:
+    """Find public API-like URLs in inline scripts and JSON config blocks."""
+    values = set()
+    for match in ENDPOINT_RE.findall(html):
+        target = urllib.parse.urljoin(page_url, match)
+        parsed = urllib.parse.urlparse(target)
+        if parsed.scheme in {"http", "https"} and parsed.netloc:
+            values.add(target)
+    return sorted(values)[:500]

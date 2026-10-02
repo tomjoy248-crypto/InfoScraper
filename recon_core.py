@@ -37,15 +37,22 @@ class Asset:
 
 
 def normalize_domain(value: str) -> str:
-    value = value.strip().lower()
-    if "://" in value:
-        value = urllib.parse.urlparse(value).hostname or ""
-    return value.strip(".")
+    value = str(value or "").strip().lower()
+    if "://" not in value and ("/" in value or ":" in value):
+        value = "//" + value
+    parsed = urllib.parse.urlparse(value)
+    host = parsed.hostname if parsed.hostname else value.split("/", 1)[0]
+    return (host or "").strip(".")
 
 
 def root_domain(value: str) -> str:
     """Best-effort registrable-domain fallback without external dependencies."""
     host = normalize_domain(value)
+    try:
+        ipaddress.ip_address(host)
+        return host
+    except ValueError:
+        pass
     labels = host.split(".")
     if len(labels) <= 2:
         return host
@@ -182,20 +189,22 @@ def probe_http(asset: Asset, timeout: int = 8, delay: float = 0.2) -> Asset:
 
 def discover_public_urls(domain: str, timeout: int = 10) -> List[Asset]:
     """Read public robots/sitemap files without crawling arbitrary paths."""
-    base = f"https://{domain}/"
     discovered = {}
     for path, kind in (("robots.txt", "robots"), ("sitemap.xml", "sitemap")):
-        try:
-            request = urllib.request.Request(base + path, headers={"User-Agent": "InfoScraper/4.0"})
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                text = response.read(2 * 1024 * 1024).decode("utf-8", errors="replace")
-            urls = re.findall(r"(?im)^\s*(?:allow|disallow|sitemap):\s*(\S+)", text) if kind == "robots" else re.findall(r"<loc>(.*?)</loc>", text, re.I | re.S)
-            for value in urls:
-                value = urllib.parse.urljoin(base, value.strip())
-                if value.startswith(("http://", "https://")):
-                    discovered[value] = Asset(value, kind, "url")
-        except (urllib.error.URLError, TimeoutError, OSError, ET.ParseError):
-            continue
+        for scheme in ("https", "http"):
+            base = f"{scheme}://{domain}/"
+            try:
+                request = urllib.request.Request(base + path, headers={"User-Agent": "InfoScraper/4.0"})
+                with urllib.request.urlopen(request, timeout=timeout) as response:
+                    text = response.read(2 * 1024 * 1024).decode("utf-8", errors="replace")
+                urls = re.findall(r"(?im)^\s*(?:allow|disallow|sitemap):\s*(\S+)", text) if kind == "robots" else re.findall(r"<loc[^>]*>(.*?)</loc>", text, re.I | re.S)
+                for value in urls:
+                    value = urllib.parse.urljoin(base, value.strip())
+                    if value.startswith(("http://", "https://")):
+                        discovered[value] = Asset(value, kind, "url")
+                break
+            except (urllib.error.URLError, TimeoutError, OSError, ET.ParseError):
+                continue
     return list(discovered.values())
 
 

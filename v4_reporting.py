@@ -82,7 +82,13 @@ th{background:#f2f2f2}.high{color:#b00020}.medium{color:#9a6700}.low{color:#176b
 def report_from_rows(target: str, rows: Iterable[dict]) -> AssessmentReport:
     report = AssessmentReport(target)
     for row in rows:
+        if not isinstance(row, dict):
+            row = {"value": str(row)}
+        try:
+            evidence = json.dumps(row, ensure_ascii=False, default=str)
+        except (TypeError, ValueError):
+            evidence = str(row)
         report.add(Finding(category="asset", title=str(row.get("type", "asset")),
                            target=str(row.get("url", row.get("子域名", ""))),
-                           evidence=json.dumps(row, ensure_ascii=False)))
+                           evidence=evidence))
     return report

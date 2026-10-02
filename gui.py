@@ -649,8 +649,11 @@ class ScraperGUI:
         if not self.url_var.get().strip():
             messagebox.showwarning("提示", "请输入起始 URL")
             return
+        # Basic mode: a URL alone is enough. When advanced selectors are not
+        # configured, automatically collect the page title and public assets.
         if not self.list_selector_var.get().strip() or not self.fields:
-            messagebox.showwarning("提示", "请配置列表选择器和至少一个字段")
+            self._log("未配置选择器，切换为自动页面资产采集")
+            self._start_asset_scan()
             return
         checkpoint_path = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "InfoScraper", "checkpoints", (self.task_name_var.get().strip() or "current") + ".json")
         if os.path.exists(checkpoint_path):

@@ -1,0 +1,117 @@
+"""Offline integration checks for HTTP parsing and proxy selection."""
+
+from unittest.mock import Mock, patch
+import pytest
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
+
+from scraper import WebScraper, ScraperError
+from cancellation import CancellationToken
+from redact import redact
+
+
+def test_api_session_request_and_json():
+    scraper = WebScraper("https://example.com", mode="api")
+    response = Mock(status_code=200)
+    response.json.return_value = {"data": [{"id": 1}]}
+    response.raise_for_status.return_value = None
+    with patch("scraper.socket.getaddrinfo", return_value=[(2,1,6,'',('93.184.216.34',443))]), patch.object(scraper.session, "get", return_value=response) as request:
+        assert scraper._fetch_api("https://example.com/api")["data"][0]["id"] == 1
+        request.assert_called_once()
+        assert request.call_args.kwargs["allow_redirects"] is False
+
+def test_proxy_auto_cooldown(tmp_path, monkeypatch):
+    import database
+    monkeypatch.setattr(database, "DB_PATH", str(tmp_path / "proxy.db"))
+    database.add_proxy("http://127.0.0.1:9")
+    for _ in range(3): database.mark_proxy_fail("http://127.0.0.1:9")
+    assert database.list_proxies()[0]["enabled"] is False
+
+
+def test_proxy_health_failure_is_safe():
+    from database import check_proxy
+    with patch("requests.get", side_effect=OSError("offline")):
+        assert check_proxy("http://127.0.0.1:9", timeout=0.01) is False
+
+
+def test_cancel_interrupts_wait():
+    scraper = WebScraper("https://example.com")
+    scraper.cancel()
+    assert scraper._should_stop() is True
+
+
+def test_shared_cancellation_token():
+    token = CancellationToken()
+    scraper = WebScraper("https://example.com", cancellation_token=token)
+    token.cancel()
+    assert scraper._should_stop() is True
+
+
+def test_sensitive_values_are_redacted():
+    value = redact({"cookie": "secret", "authorization": "Bearer abc", "name": "ok"})
+    assert value["cookie"] == "[REDACTED]" and value["authorization"] == "[REDACTED]"
+
+
+def test_playwright_captcha_detection():
+    scraper = WebScraper("https://example.com", render=True, retries=0)
+    class Page:
+        def goto(self, *args, **kwargs):
+            return None
+        def content(self):
+            return "<html>captcha verification required</html>"
+    scraper._playwright_page = Page()
+    scraper._browser = type("B", (), {"close": lambda self: None})()
+    scraper._pw = type("P", (), {"stop": lambda self: None})()
+    try:
+        scraper._fetch_render("https://example.com")
+    except ScraperError as exc:
+        assert "渲染失败" in str(exc)
+        assert "检测到验证码页面" in str(exc.__cause__)
+
+
+def test_real_local_http_fetch():
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = b"<html><div class='item'><span>ok</span></div></html>"
+            self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+        def log_message(self, *_):
+            pass
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+    scraper = WebScraper(f"http://127.0.0.1:{server.server_port}")
+    # Bypass SSRF protection only for this isolated local test server.
+    with patch.object(scraper, "_validate_url"):
+        html = scraper._fetch(scraper.start_url)
+    server.shutdown()
+    assert "ok" in html
+
+def test_real_local_http_static_stream_pipeline():
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = b"<html><div class='item'><span>a</span></div><div class='item'><span>b</span></div></html>"
+            self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+        def log_message(self, *_): pass
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    scraper = WebScraper(f"http://127.0.0.1:{server.server_port}")
+    with patch.object(scraper, "_validate_url"):
+        rows = list(scraper.iter_run(".item", [{"name": "value", "selector": "span"}], max_pages=1))
+    server.shutdown()
+    assert [r["value"] for r in rows] == ["a", "b"]
+
+def test_stream_cursor_pagination_is_rejected():
+    scraper = WebScraper("https://example.com", mode="api", api_config={"stream_prefix": "item", "cursor_path": "next"})
+    with patch.object(scraper, "_validate_url"):
+        try:
+            list(scraper.iter_run("$", [], max_pages=2))
+        except ScraperError as exc:
+            assert "不支持" in str(exc)
+        else:
+            raise AssertionError("stream cursor pagination must be rejected")
+
+def test_stream_parser_wraps_errors():
+    def broken():
+        yield {"id": 1}
+        raise ValueError("truncated")
+    with pytest.raises(ScraperError, match="流式响应解析失败"):
+        list(WebScraper._wrap_stream(broken()))

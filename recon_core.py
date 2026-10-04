@@ -1,0 +1,295 @@
+"""Low-risk, passive asset discovery primitives for authorized domains."""
+
+from __future__ import annotations
+
+import csv
+import json
+import socket
+import urllib.parse
+import urllib.request
+import urllib.error
+import re
+import time
+import ipaddress
+import xml.etree.ElementTree as ET
+from dataclasses import asdict, dataclass
+from typing import Iterable, List
+
+
+@dataclass
+class Asset:
+    value: str
+    source: str
+    kind: str = "subdomain"
+    ip: str = ""
+    status: str = ""
+    fingerprint: str = ""
+    security_headers: str = ""
+    final_url: str = ""
+    asn: str = ""
+    organization: str = ""
+    cdn: str = ""
+    country: str = ""
+    city: str = ""
+    cidr: str = ""
+    emails: str = ""
+    api_paths: str = ""
+    whois_org: str = ""
+    whois_dates: str = ""
+    nameservers: str = ""
+
+
+def normalize_domain(value: str) -> str:
+    value = str(value or "").strip().lower()
+    if "://" not in value and ("/" in value or ":" in value):
+        value = "//" + value
+    parsed = urllib.parse.urlparse(value)
+    host = parsed.hostname if parsed.hostname else value.split("/", 1)[0]
+    return (host or "").strip(".")
+
+
+def root_domain(value: str) -> str:
+    """Best-effort registrable-domain fallback without external dependencies."""
+    host = normalize_domain(value)
+    try:
+        ipaddress.ip_address(host)
+        return host
+    except ValueError:
+        pass
+    labels = host.split(".")
+    if len(labels) <= 2:
+        return host
+    multi_level_suffixes = {"co.uk", "com.cn", "com.au", "co.jp", "com.br"}
+    suffix = ".".join(labels[-2:])
+    return ".".join(labels[-3:]) if suffix in multi_level_suffixes else ".".join(labels[-2:])
+
+
+def resolve_host(host: str) -> List[str]:
+    try:
+        return sorted({item[4][0] for item in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)})
+    except OSError:
+        return []
+
+
+def enrich_rdap(asset: Asset, timeout: int = 8) -> Asset:
+    """Add public RDAP registration metadata when the registry supports it."""
+    host = normalize_domain(asset.value)
+    try:
+        ipaddress.ip_address(host)
+        return asset
+    except ValueError:
+        pass
+    if not host or "." not in host:
+        return asset
+    try:
+        request = urllib.request.Request(
+            f"https://rdap.org/domain/{urllib.parse.quote(host)}",
+            headers={"Accept": "application/rdap+json", "User-Agent": "InfoScraper/4.0"},
+        )
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            data = json.loads(response.read().decode("utf-8", errors="replace"))
+        entities = data.get("entities") or []
+        orgs = []
+        for entity in entities:
+            vcard = entity.get("vcardArray") or []
+            for field in vcard[1] if len(vcard) > 1 and isinstance(vcard[1], list) else []:
+                if len(field) > 3 and field[0] in {"fn", "org"} and field[3]:
+                    orgs.append(str(field[3]))
+        asset.whois_org = ", ".join(dict.fromkeys(orgs))
+        dates = []
+        for event in data.get("events") or []:
+            if event.get("eventAction") in {"registration", "expiration", "last changed"}:
+                dates.append(f"{event.get('eventAction')}: {event.get('eventDate', '')}")
+        asset.whois_dates = "; ".join(dates)
+        servers = [str(item.get("ldhName", "")).lower() for item in data.get("nameservers") or [] if item.get("ldhName")]
+        asset.nameservers = ", ".join(dict.fromkeys(servers))
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        pass
+    return asset
+
+
+def crtsh_subdomains(domain: str, timeout: int = 15) -> List[Asset]:
+    query = urllib.parse.urlencode({"q": f"%.{domain}", "output": "json"})
+    request = urllib.request.Request(
+        f"https://crt.sh/?{query}", headers={"User-Agent": "InfoScraper/4.0"}
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            rows = json.loads(response.read().decode("utf-8", errors="replace"))
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        return []
+    assets = {}
+    for row in rows:
+        for name in str(row.get("name_value", "")).splitlines():
+            host = normalize_domain(name.lstrip("*."))
+            if host == domain or not host.endswith("." + domain):
+                continue
+            assets[host] = Asset(host, "crt.sh")
+    return list(assets.values())
+
+
+def hackertarget_subdomains(domain: str, timeout: int = 15) -> List[Asset]:
+    """Use the public hostsearch endpoint as a second passive source."""
+    request = urllib.request.Request(
+        f"https://api.hackertarget.com/hostsearch/?q={urllib.parse.quote(domain)}",
+        headers={"User-Agent": "InfoScraper/4.0"},
+    )
+    assets = {}
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            text = response.read().decode("utf-8", errors="replace")
+        for line in text.splitlines():
+            host = normalize_domain(line.split(",", 1)[0])
+            if host.endswith("." + domain):
+                assets[host] = Asset(host, "hackertarget")
+    except (urllib.error.URLError, TimeoutError, OSError):
+        pass
+    return list(assets.values())
+
+
+def enrich_dns(assets: Iterable[Asset], delay: float = 0.2) -> List[Asset]:
+    result = []
+    for asset in assets:
+        ips = resolve_host(asset.value)
+        asset.ip = ",".join(ips)
+        result.append(asset)
+        if delay > 0:
+            time.sleep(delay)
+    return result
+
+
+def enrich_network(asset: Asset, timeout: int = 8) -> Asset:
+    """Add public IP ownership/ASN metadata and a conservative CDN hint."""
+    ip = asset.ip.split(",", 1)[0] if asset.ip else ""
+    if not ip:
+        return asset
+    try:
+        request = urllib.request.Request(f"https://ipwho.is/{urllib.parse.quote(ip)}", headers={"User-Agent": "InfoScraper/4.0"})
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            data = json.loads(response.read().decode("utf-8", errors="replace"))
+        connection = data.get("connection") or {}
+        asset.asn = str(connection.get("asn") or "")
+        asset.organization = str(connection.get("org") or connection.get("isp") or "")
+        asset.country = str(data.get("country") or "")
+        asset.city = str(data.get("city") or "")
+        try:
+            asset.cidr = str(ipaddress.ip_network(f"{ip}/24", strict=False))
+        except ValueError:
+            asset.cidr = ""
+        text = (asset.organization + " " + str(connection.get("isp") or "")).lower()
+        cdn_markers = ("cloudflare", "akamai", "fastly", "cloudfront", "bunny", "incapsula")
+        asset.cdn = "yes" if any(marker in text for marker in cdn_markers) else "unknown"
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        pass
+    return asset
+
+
+def probe_http(asset: Asset, timeout: int = 8, delay: float = 0.2) -> Asset:
+    """Perform a single low-impact HTTP request and record basic metadata."""
+    for scheme in ("https", "http"):
+        url = f"{scheme}://{asset.value}/"
+        request = urllib.request.Request(url, headers={"User-Agent": "InfoScraper/4.0"}, method="GET")
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                body = response.read(256 * 1024).decode("utf-8", errors="replace")
+                asset.final_url = response.geturl()
+                title = re.search(r"<title[^>]*>(.*?)</title>", body, re.I | re.S)
+                title_text = re.sub(r"\s+", " ", title.group(1)).strip() if title else ""
+                asset.status = f"{response.status} {title_text}".strip()
+                signals = []
+                server = (response.headers.get("Server") or "").lower()
+                powered = (response.headers.get("X-Powered-By") or "").lower()
+                headers = f"{server} {powered}".lower()
+                for name, marker in (("Nginx", "nginx"), ("Apache", "apache"), ("IIS", "microsoft-iis"),
+                                     ("Caddy", "caddy"), ("LiteSpeed", "litespeed"),
+                                     ("PHP", "php"), ("ASP.NET", "asp.net"),
+                                     ("Express", "express"), ("Gunicorn", "gunicorn")):
+                    if marker in headers:
+                        signals.append(name)
+                page = body.lower()
+                for name, marker in (("WordPress", "wp-content"), ("Laravel", "laravel_session"),
+                                     ("Django", "csrfmiddlewaretoken"), ("Vue", "vue"), ("React", "react")):
+                    if marker in page and name not in signals:
+                        signals.append(name)
+                for name, markers in (("Next.js", ("/_next/", "__next_data__")),
+                                      ("Nuxt", ("/_nuxt/", "__nuxt")),
+                                      ("Angular", ("ng-version", "angular")),
+                                      ("Bootstrap", ("bootstrap.min.", "bootstrap.css")),
+                                      ("jQuery", ("jquery.min.", "jquery-")),
+                                      ("Shopify", ("cdn.shopify.com", "shopify")),
+                                      ("Drupal", ("drupalSettings", "/sites/default/files/")),
+                                      ("Matomo", ("matomo.js", "_paq.push")),
+                                      ("Google Analytics", ("google-analytics.com", "gtag("))):
+                    if any(marker in page for marker in markers) and name not in signals:
+                        signals.append(name)
+                asset.fingerprint = ", ".join(signals)
+                asset.emails = ",".join(sorted(set(re.findall(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", body, re.I))))
+                asset.api_paths = ",".join(sorted(set(re.findall(r"(?:/api/|/graphql|/rest/)[A-Za-z0-9_./?=&-]*", body, re.I)))[:100])
+                expected = ("strict-transport-security", "content-security-policy", "x-frame-options", "x-content-type-options", "referrer-policy")
+                missing = [name for name in expected if not response.headers.get(name)]
+                asset.security_headers = "missing: " + ", ".join(missing) if missing else "all common headers present"
+                if delay > 0:
+                    time.sleep(delay)
+                return asset
+        except urllib.error.HTTPError as exc:
+            # An HTTP response proves the host is reachable even when access
+            # is denied or the path is missing. Preserve that evidence.
+            asset.status = str(exc.code)
+            asset.final_url = getattr(exc, "url", url) or url
+            asset.fingerprint = "access denied" if exc.code in {401, 403, 429} else ""
+            if delay > 0:
+                time.sleep(delay)
+            return asset
+        except (urllib.error.URLError, TimeoutError, OSError):
+            continue
+    asset.status = "unreachable"
+    asset.fingerprint = ""
+    if delay > 0:
+        time.sleep(delay)
+    return asset
+
+
+def discover_public_urls(domain: str, timeout: int = 10) -> List[Asset]:
+    """Read public robots/sitemap files without crawling arbitrary paths."""
+    discovered = {}
+    for path, kind in (("robots.txt", "robots"), ("sitemap.xml", "sitemap")):
+        for scheme in ("https", "http"):
+            base = f"{scheme}://{domain}/"
+            try:
+                request = urllib.request.Request(base + path, headers={"User-Agent": "InfoScraper/4.0"})
+                with urllib.request.urlopen(request, timeout=timeout) as response:
+                    text = response.read(2 * 1024 * 1024).decode("utf-8", errors="replace")
+                urls = re.findall(r"(?im)^\s*(?:allow|disallow|sitemap):\s*(\S+)", text) if kind == "robots" else re.findall(r"<loc[^>]*>(.*?)</loc>", text, re.I | re.S)
+                for value in urls:
+                    value = urllib.parse.urljoin(base, value.strip())
+                    if value.startswith(("http://", "https://")):
+                        discovered[value] = Asset(value, kind, "url")
+                break
+            except (urllib.error.URLError, TimeoutError, OSError, ET.ParseError):
+                continue
+    return list(discovered.values())
+
+
+def extract_public_contacts(url: str, timeout: int = 10) -> tuple[str, str]:
+    """Extract public email addresses and likely API paths from one HTML page."""
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "InfoScraper/4.0"})
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            text = response.read(2 * 1024 * 1024).decode("utf-8", errors="replace")
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return "", ""
+    emails = sorted(set(re.findall(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", text, re.I)))
+    paths = sorted(set(re.findall(r"(?:/api/|/graphql|/rest/)[A-Za-z0-9_./?=&-]*", text, re.I)))
+    return ",".join(emails), ",".join(paths[:100])
+
+
+def export_assets(assets: Iterable[Asset], path: str) -> None:
+    rows = [asdict(asset) for asset in assets]
+    if path.lower().endswith(".json"):
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(rows, handle, ensure_ascii=False, indent=2)
+        return
+    with open(path, "w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["value", "source", "kind", "ip", "status"])
+        writer.writeheader()
+        writer.writerows(rows)

@@ -39,6 +39,9 @@ from streaming import process_rows
 from cleaner import apply_clean_rules, CLEAN_RULES
 from templates import get_template, get_template_names
 from subdomain import collect_subdomains
+from search_engine import ENGINE_LABELS, SUPPORTED_ENGINES, collect_search_results, normalize_search_config
+from social import SOURCE_LABELS, fetch_social_rows, normalize_social_config
+from detail import attach_details, normalize_detail_config
 from version import __version__
 from recon_core import crtsh_subdomains, discover_public_urls, enrich_dns, enrich_network, enrich_rdap, hackertarget_subdomains, probe_http
 
@@ -51,6 +54,7 @@ class ScraperGUI:
         self.root.minsize(1100, 800)
 
         self.fields = []
+        self.detail_fields = []
         self.result_data = []
         self.raw_data = []
         self.scheduler = InAppScheduler()
@@ -59,6 +63,10 @@ class ScraperGUI:
         self.scheduler.start()
         self.start_time = None
         self._scheduled_running = set()
+        self.current_record_id = None
+        self.result_count = 0
+        self._active_scraper = None
+        self._recon_cancel = None
 
         init_db()
         self._build_ui()
@@ -226,7 +234,15 @@ class ScraperGUI:
 
         tk.Label(basic, text="采集模式:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
         self.mode_var = tk.StringVar(value="static")
-        ttk.Combobox(basic, textvariable=self.mode_var, values=["static", "api"], state="readonly").grid(row=1, column=1, sticky=tk.W, padx=5, pady=2)
+        mode_box = ttk.Combobox(
+            basic,
+            textvariable=self.mode_var,
+            values=["static", "api", "search", "social", "detail"],
+            state="readonly",
+        )
+        mode_box.grid(row=1, column=1, sticky=tk.W, padx=5, pady=2)
+        mode_box.bind("<<ComboboxSelected>>", lambda _e: self._on_mode_change())
+        tk.Label(basic, text="static/api 常规采集，search 搜索引结果，social 社媒公开内容，detail 列表+详情", fg="#666").grid(row=1, column=2, sticky=tk.W, padx=5, pady=2)
 
         tk.Label(basic, text="选择器类型:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=2)
         self.selector_type_var = tk.StringVar(value="css")
@@ -357,6 +373,158 @@ class ScraperGUI:
         result_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.result_tree = ttk.Treeview(result_frame, show="headings")
         self.result_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        self._build_search_panel(parent)
+        self._build_social_panel(parent)
+        self._build_detail_panel(parent)
+
+    def _build_search_panel(self, parent):
+        frame = tk.LabelFrame(parent, text="搜索引擎配置（模式 search，无需 API Key）")
+        frame.pack(fill=tk.X, padx=5, pady=5)
+
+        tk.Label(frame, text="搜索引擎:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
+        self.search_engine_var = tk.StringVar(value="bing")
+        ttk.Combobox(
+            frame,
+            textvariable=self.search_engine_var,
+            values=list(SUPPORTED_ENGINES),
+            state="readonly",
+            width=14,
+        ).grid(row=0, column=1, sticky=tk.W, padx=5, pady=2)
+
+        tk.Label(frame, text="结果条数:").grid(row=0, column=2, sticky=tk.W, padx=5, pady=2)
+        self.search_max_results_var = tk.IntVar(value=20)
+        tk.Spinbox(frame, from_=1, to=500, textvariable=self.search_max_results_var, width=8).grid(row=0, column=3, sticky=tk.W, padx=5, pady=2)
+
+        tk.Label(frame, text="关键词（每行一个，或用逗号分隔）:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
+        self.search_keywords_var = tk.StringVar()
+        tk.Entry(frame, textvariable=self.search_keywords_var).grid(row=1, column=1, columnspan=3, sticky=tk.EW, padx=5, pady=2)
+
+        tk.Label(frame, text="限定站点:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=2)
+        self.search_site_var = tk.StringVar()
+        tk.Entry(frame, textvariable=self.search_site_var).grid(row=2, column=1, sticky=tk.EW, padx=5, pady=2)
+        tk.Label(frame, text="语言:").grid(row=2, column=2, sticky=tk.W, padx=5, pady=2)
+        self.search_lang_var = tk.StringVar(value="zh-CN")
+        tk.Entry(frame, textvariable=self.search_lang_var, width=8).grid(row=2, column=3, sticky=tk.W, padx=5, pady=2)
+
+        frame.columnconfigure(1, weight=1)
+        frame.columnconfigure(3, weight=1)
+
+    def _build_social_panel(self, parent):
+        frame = tk.LabelFrame(parent, text="社交媒体配置（模式 social，仅公开内容）")
+        frame.pack(fill=tk.X, padx=5, pady=5)
+
+        tk.Label(frame, text="平台:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
+        self.social_source_var = tk.StringVar(value="rss")
+        source_box = ttk.Combobox(
+            frame,
+            textvariable=self.social_source_var,
+            values=[f"{key}|{label}" for key, label in SOURCE_LABELS.items()],
+            state="readonly",
+            width=28,
+        )
+        source_box.grid(row=0, column=1, sticky=tk.W, padx=5, pady=2)
+
+        tk.Label(frame, text="采集条数:").grid(row=0, column=2, sticky=tk.W, padx=5, pady=2)
+        self.social_limit_var = tk.IntVar(value=20)
+        tk.Spinbox(frame, from_=1, to=500, textvariable=self.social_limit_var, width=8).grid(row=0, column=3, sticky=tk.W, padx=5, pady=2)
+
+        tk.Label(frame, text="账号 / 频道 / 订阅源:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
+        self.social_target_var = tk.StringVar()
+        tk.Entry(frame, textvariable=self.social_target_var).grid(row=1, column=1, columnspan=3, sticky=tk.EW, padx=5, pady=2)
+
+        tk.Label(
+            frame,
+            text="示例：RSS 填 https://example.com/feed；YouTube 填 @handle 或频道 ID；bilibili/微博填 UID；Reddit 填版块名；Telegram 填 @频道",
+            fg="#666",
+            wraplength=900,
+            justify=tk.LEFT,
+        ).grid(row=2, column=0, columnspan=4, sticky=tk.W, padx=5, pady=2)
+
+        frame.columnconfigure(1, weight=1)
+        frame.columnconfigure(3, weight=1)
+
+    def _build_detail_panel(self, parent):
+        frame = tk.LabelFrame(parent, text="详情页二级采集（列表页 + 详情页字段合并）")
+        frame.pack(fill=tk.X, padx=5, pady=5)
+
+        opts = tk.Frame(frame)
+        opts.pack(fill=tk.X, padx=5, pady=2)
+        self.detail_enabled_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(opts, text="启用详情页采集", variable=self.detail_enabled_var).pack(side=tk.LEFT, padx=2)
+        self.detail_skip_error_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(opts, text="详情失败时保留列表数据", variable=self.detail_skip_error_var).pack(side=tk.LEFT, padx=8)
+        self.detail_keep_list_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(opts, text="保留列表字段", variable=self.detail_keep_list_var).pack(side=tk.LEFT, padx=8)
+
+        row2 = tk.Frame(frame)
+        row2.pack(fill=tk.X, padx=5, pady=2)
+        tk.Label(row2, text="详情链接字段:").pack(side=tk.LEFT)
+        self.detail_url_field_var = tk.StringVar(value="详情链接")
+        tk.Entry(row2, textvariable=self.detail_url_field_var, width=14).pack(side=tk.LEFT, padx=3)
+        tk.Label(row2, text="详情容器选择器:").pack(side=tk.LEFT, padx=6)
+        self.detail_scope_var = tk.StringVar(value="body")
+        tk.Entry(row2, textvariable=self.detail_scope_var, width=18).pack(side=tk.LEFT, padx=3)
+        tk.Label(row2, text="最多详情页(0=不限):").pack(side=tk.LEFT, padx=6)
+        self.detail_max_items_var = tk.IntVar(value=0)
+        tk.Spinbox(row2, from_=0, to=100000, textvariable=self.detail_max_items_var, width=8).pack(side=tk.LEFT, padx=3)
+
+        input_f = tk.Frame(frame)
+        input_f.pack(fill=tk.X, padx=5, pady=2)
+        tk.Label(input_f, text="详情字段名:").pack(side=tk.LEFT)
+        self.detail_field_name_var = tk.StringVar()
+        tk.Entry(input_f, textvariable=self.detail_field_name_var, width=12).pack(side=tk.LEFT, padx=2)
+        tk.Label(input_f, text="选择器:").pack(side=tk.LEFT)
+        self.detail_field_selector_var = tk.StringVar()
+        tk.Entry(input_f, textvariable=self.detail_field_selector_var, width=24).pack(side=tk.LEFT, padx=2)
+        tk.Label(input_f, text="属性:").pack(side=tk.LEFT)
+        self.detail_field_attr_var = tk.StringVar()
+        tk.Entry(input_f, textvariable=self.detail_field_attr_var, width=8).pack(side=tk.LEFT, padx=2)
+        ttk.Button(input_f, text="添加详情字段", command=self._add_detail_field).pack(side=tk.LEFT, padx=5)
+
+        self.detail_field_tree = ttk.Treeview(frame, columns=("name", "selector", "attr"), show="headings", height=4)
+        self.detail_field_tree.heading("name", text="字段名")
+        self.detail_field_tree.heading("selector", text="选择器")
+        self.detail_field_tree.heading("attr", text="属性")
+        self.detail_field_tree.pack(fill=tk.X, padx=5, pady=2)
+        ttk.Button(frame, text="删除选中详情字段", command=self._del_detail_field).pack(pady=2)
+
+    def _on_mode_change(self):
+        mode = self.mode_var.get()
+        hints = {
+            "static": "静态页面采集：填写起始 URL、列表选择器和字段",
+            "api": "API 采集：填写 API 地址并在「API 配置」中设置分页",
+            "search": "搜索引采集：只需关键词，无需 URL",
+            "social": "社媒公开内容：选择平台并填写账号/频道/订阅源",
+            "detail": "列表 + 详情：列表字段填「详情链接」，再配置详情字段",
+        }
+        self._log(hints.get(mode, mode))
+        if mode == "detail":
+            self.detail_enabled_var.set(True)
+
+    def _add_detail_field(self):
+        name = self.detail_field_name_var.get().strip()
+        selector = self.detail_field_selector_var.get().strip()
+        if not name or not selector:
+            messagebox.showwarning("提示", "详情字段名和选择器都不能为空")
+            return
+        attr = self.detail_field_attr_var.get().strip()
+        self.detail_fields.append({"name": name, "selector": selector, "attr": attr or None})
+        self.detail_field_tree.insert("", tk.END, values=(name, selector, attr))
+        self.detail_field_name_var.set("")
+        self.detail_field_selector_var.set("")
+        self.detail_field_attr_var.set("")
+
+    def _del_detail_field(self):
+        selected = self.detail_field_tree.selection()
+        if not selected:
+            return
+        indices = sorted([self.detail_field_tree.index(item) for item in selected], reverse=True)
+        for item in selected:
+            self.detail_field_tree.delete(item)
+        for idx in indices:
+            if 0 <= idx < len(self.detail_fields):
+                self.detail_fields.pop(idx)
 
     def _build_anti_tab(self, parent):
         frame = tk.LabelFrame(parent, text="反爬策略")
@@ -506,6 +674,8 @@ class ScraperGUI:
             return
         domain = domain.replace("http://", "").replace("https://", "").split("/")[0]
         self.subdomain_tree.delete(*self.subdomain_tree.get_children())
+        self.result_data.clear()
+        self.current_record_id = None
         self.status_var.set("正在收集子域名...")
         self.progress["value"] = 0
         self.start_time = time.time()
@@ -546,8 +716,9 @@ class ScraperGUI:
 
     def _show_subdomain_results(self):
         self.status_var.set(f"子域名收集完成，共 {len(self.result_data)} 个")
+        self.subdomain_tree.delete(*self.subdomain_tree.get_children())
         for row in self.result_data:
-            self.subdomain_tree.insert("", tk.END, values=(row["子域名"], row["IP"], row["来源"]))
+            self.subdomain_tree.insert("", tk.END, values=(row.get("子域名", ""), row.get("IP", ""), row.get("来源", "")))
 
     def _export_subdomain(self):
         if not self.result_data:
@@ -699,8 +870,31 @@ class ScraperGUI:
         messagebox.showinfo("选择器已生成", f"{sel_type.upper()}: {selector}\n已填入字段选择器框")
 
     def _start_scrape(self):
+        mode = self.mode_var.get()
+        if mode in ("search", "social"):
+            # 这两种模式不依赖起始 URL，直接校验各自配置后启动。
+            try:
+                if mode == "search":
+                    normalize_search_config(self._search_config())
+                else:
+                    normalize_social_config(self._social_config())
+            except Exception as exc:
+                messagebox.showwarning("配置有误", str(exc))
+                return
+            self.result_data.clear()
+            self.raw_data.clear()
+            self.current_record_id = None
+            self.result_count = 0
+            self.progress["value"] = 0
+            self.status_var.set("采集中...")
+            self.start_time = time.time()
+            threading.Thread(target=self._mode_worker, args=(mode,), daemon=True).start()
+            return
         if not self.url_var.get().strip():
             messagebox.showwarning("提示", "请输入起始 URL")
+            return
+        if mode == "detail" and not self.detail_fields:
+            messagebox.showwarning("提示", "详情模式请先添加至少一个详情字段")
             return
         # Basic mode: a URL alone is enough. When advanced selectors are not
         # configured, automatically collect the page title and public assets.
@@ -882,29 +1076,173 @@ class ScraperGUI:
                 self._active_scraper = None
             if scraper is not None: scraper.close()
 
+    def _search_config(self) -> dict:
+        return {
+            "engine": self.search_engine_var.get(),
+            "keywords": self.search_keywords_var.get(),
+            "max_results": self.search_max_results_var.get(),
+            "site": self.search_site_var.get().strip(),
+            "lang": self.search_lang_var.get().strip(),
+        }
+
+    def _social_config(self) -> dict:
+        raw = self.social_source_var.get()
+        source = raw.split("|", 1)[0] if "|" in raw else raw
+        return {
+            "source": source,
+            "target": self.social_target_var.get().strip(),
+            "limit": self.social_limit_var.get(),
+        }
+
+    def _detail_config(self) -> dict:
+        return {
+            "enabled": self.detail_enabled_var.get(),
+            "url_field": self.detail_url_field_var.get().strip() or "详情链接",
+            "list_selector": self.detail_scope_var.get().strip() or "body",
+            "selector_type": self.selector_type_var.get(),
+            "fields": self.detail_fields,
+            "keep_list_fields": self.detail_keep_list_var.get(),
+            "skip_on_error": self.detail_skip_error_var.get(),
+            "max_items": self.detail_max_items_var.get(),
+        }
+
+    def _make_scraper(self, task: dict, start_url: str = ""):
+        proxies = [p["address"] for p in list_proxies() if p["enabled"]]
+        mode = self.mode_var.get()
+        return WebScraper(
+            start_url=start_url or self.url_var.get().strip(),
+            mode=mode if mode in ("static", "api") else "static",
+            headers={"User-Agent": self.ua_var.get().strip()} if self.ua_var.get().strip() else {},
+            cookies=self.cookie_var.get().strip() or None,
+            delay=self.delay_var.get(),
+            delay_random=self.delay_random_var.get(),
+            proxy_pool=proxies if proxies else None,
+            random_ua=self.random_ua_var.get(),
+            retries=self.retries_var.get(),
+            render=self.render_var.get(),
+            render_wait_until=self.render_wait_var.get(),
+            api_config=task.get("api_config"),
+            checkpoint_path=self._checkpoint_path(self.task_name_var.get().strip() or "current"),
+            respect_robots=self.respect_robots_var.get(),
+            robots_fail_closed=self.robots_fail_closed_var.get(),
+            trusted_hosts=task.get("trusted_hosts", []),
+        )
+
+    def _pipeline_dedup(self):
+        dedup_fields = [f.strip() for f in self.dedup_fields_var.get().split(",") if f.strip()]
+        if self.incremental_var.get():
+            dedup_fields += [
+                v.strip()
+                for v in (self.incremental_id_var.get(), self.incremental_url_var.get(), self.incremental_time_var.get())
+                if v.strip() and v.strip() not in dedup_fields
+            ]
+        enabled = self.dedup_var.get() or self.incremental_var.get()
+        known = existing_keys(self.task_name_var.get().strip(), dedup_fields) if self.incremental_var.get() and dedup_fields else set()
+        return dedup_fields, known, enabled
+
+    def _run_pipeline(self, raw_rows, source_url: str, default_task_name: str, task: dict, dedup_fields, known, dedup_enabled):
+        """把任意来源的行接入 清洗 -> 去重 -> 入库 -> 展示 的统一管线。"""
+        raw_count = 0
+
+        def stream_rows():
+            nonlocal raw_count
+            for row in raw_rows:
+                raw_count += 1
+                if len(self.raw_data) < 100:
+                    self.raw_data.append(row)
+                yield row
+
+        processed = []
+        processed_count = 0
+
+        def processed_rows():
+            nonlocal processed_count
+            for row in process_rows(
+                stream_rows(),
+                task.get("clean_rules") or self.clean_rules,
+                dedup_fields if dedup_enabled else None,
+                known,
+                dedup=dedup_enabled,
+            ):
+                processed_count += 1
+                if len(processed) < 100:
+                    processed.append(row)
+                yield row
+
+        record_id = save_record_stream(self.task_name_var.get().strip() or default_task_name, source_url, processed_rows())
+        self.current_record_id = record_id
+        self.result_data = processed
+        self.result_count = processed_count
+        self.root.after(0, self._show_results)
+        elapsed = round(time.time() - self.start_time, 2) if self.start_time else 0
+        self.root.after(0, lambda: self._update_stat(raw_count, processed_count, elapsed))
+        self.root.after(0, lambda: self._log(f"已保存到历史记录，ID: {record_id}（{processed_count} 条）"))
+        self.root.after(0, self._refresh_history)
+        return processed_count
+
+    def _mode_worker(self, mode: str):
+        """搜索引擎 / 社媒公开内容采集的工作线程。"""
+        scraper = None
+        try:
+            task = self._collect_task_config()
+            scraper = self._make_scraper(task, start_url=self.url_var.get().strip() or "about:blank")
+            self._active_scraper = scraper
+            dedup_fields, known, dedup_enabled = self._pipeline_dedup()
+            if mode == "search":
+                cfg = normalize_search_config(self._search_config())
+                source_url = f"search:{cfg['engine']}:{' | '.join(cfg['keywords'])}"
+                self.root.after(0, lambda: self._log(f"开始搜索: {source_url}"))
+                raw = collect_search_results(
+                    cfg,
+                    fetch=scraper._fetch,
+                    on_log=lambda msg: self.root.after(0, lambda: self._log(msg)),
+                    on_progress=lambda done, total: self.root.after(0, lambda: self._update_progress(done, total)),
+                    should_stop=scraper._should_stop,
+                    sleep=scraper._sleep_interruptibly,
+                )
+                self._run_pipeline(raw, source_url, "搜索引擎采集", task, dedup_fields, known, dedup_enabled)
+            else:
+                cfg = normalize_social_config(self._social_config())
+                source_url = f"{cfg['source']}:{cfg['target']}"
+                self.root.after(0, lambda: self._log(f"开始采集 {SOURCE_LABELS[cfg['source']]}: {cfg['target']}"))
+                rows = fetch_social_rows(
+                    cfg,
+                    fetch=scraper._fetch,
+                    fetch_json=lambda url, referer="": self._fetch_json_with_referer(scraper, url, referer),
+                )
+                self.root.after(0, lambda: self.status_var.set(f"已获取 {len(rows)} 条公开内容"))
+                self._run_pipeline(iter(rows), source_url, "社媒采集", task, dedup_fields, known, dedup_enabled)
+        except Exception as exc:
+            self.root.after(0, lambda: self._log(f"采集失败: {exc}"))
+            self.root.after(0, lambda: self.status_var.set("采集失败"))
+            self.root.after(0, lambda: messagebox.showerror("采集失败", str(exc)))
+        finally:
+            if self._active_scraper is scraper:
+                self._active_scraper = None
+            if scraper is not None:
+                scraper.close()
+
+    @staticmethod
+    def _fetch_json_with_referer(scraper, url: str, referer: str = ""):
+        """社媒接口大多需要 Referer，这里临时注入后立刻恢复，避免污染后续请求。"""
+        had_key = "Referer" in scraper.session.headers
+        old_value = scraper.session.headers.get("Referer")
+        if referer:
+            scraper.session.headers["Referer"] = referer
+        try:
+            return scraper._fetch_api(url)
+        finally:
+            if referer:
+                if had_key:
+                    scraper.session.headers["Referer"] = old_value
+                else:
+                    scraper.session.headers.pop("Referer", None)
+
     def _scrape_worker(self):
         scraper = None
         try:
-            proxies = [p["address"] for p in list_proxies() if p["enabled"]]
             task = self._collect_task_config()
-            scraper = WebScraper(
-                start_url=self.url_var.get().strip(),
-                mode=self.mode_var.get(),
-                headers={"User-Agent": self.ua_var.get().strip()} if self.ua_var.get().strip() else {},
-                cookies=self.cookie_var.get().strip() or None,
-                delay=self.delay_var.get(),
-                delay_random=self.delay_random_var.get(),
-                proxy_pool=proxies if proxies else None,
-                random_ua=self.random_ua_var.get(),
-                retries=self.retries_var.get(),
-                render=self.render_var.get(),
-                render_wait_until=self.render_wait_var.get(),
-                api_config=task.get("api_config"),
-                checkpoint_path=os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "InfoScraper", "checkpoints", (self.task_name_var.get().strip() or "current") + ".json"),
-                respect_robots=self.respect_robots_var.get(),
-                robots_fail_closed=self.robots_fail_closed_var.get(),
-                trusted_hosts=task.get("trusted_hosts", []),
-            )
+            scraper = self._make_scraper(task, start_url=self.url_var.get().strip())
             self._active_scraper = scraper
             raw = scraper.iter_run(
                 list_selector=self.list_selector_var.get().strip(),
@@ -918,47 +1256,26 @@ class ScraperGUI:
                 on_progress=lambda p, total: self.root.after(0, lambda: self._update_progress(p, total)),
                 on_log=lambda msg: self.root.after(0, lambda: self._log(msg)),
             )
-            raw_count = 0
-
-            # 数据处理
-            dedup_fields = [f.strip() for f in self.dedup_fields_var.get().split(",") if f.strip()]
-            if self.incremental_var.get():
-                dedup_fields += [v.strip() for v in (self.incremental_id_var.get(), self.incremental_url_var.get(), self.incremental_time_var.get()) if v.strip() and v.strip() not in dedup_fields]
-            known = existing_keys(self.task_name_var.get().strip(), dedup_fields) if self.incremental_var.get() and dedup_fields else set()
-            def stream_rows():
-                nonlocal raw_count
-                for row in raw:
-                    raw_count += 1
-                    if len(self.raw_data) < 100:
-                        self.raw_data.append(row)
-                    yield row
-            processed = []; processed_count = 0
-            def processed_rows():
-                nonlocal processed_count
-                for row in process_rows(stream_rows(), self.clean_rules, dedup_fields if (self.dedup_var.get() or self.incremental_var.get()) else None, known, dedup=(self.dedup_var.get() or self.incremental_var.get())):
-                    processed_count += 1
-                    if len(processed) < 100:
-                        processed.append(row)
-                    yield row
-            record_id = save_record_stream(self.task_name_var.get().strip(), self.url_var.get().strip(), processed_rows())
-            self.current_record_id = record_id
+            if self.detail_enabled_var.get() or self.mode_var.get() == "detail":
+                cfg = normalize_detail_config(self._detail_config())
+                self.root.after(0, lambda: self._log(f"详情页采集已启用，共 {len(cfg['fields'])} 个详情字段"))
+                raw = attach_details(
+                    raw,
+                    fetch=scraper._fetch,
+                    config=cfg,
+                    base_url=self.url_var.get().strip(),
+                    on_log=lambda msg: self.root.after(0, lambda: self._log(msg)),
+                    on_progress=lambda done, skipped: self.root.after(0, lambda: self.status_var.set(f"详情页已完成 {done} 条")),
+                    should_stop=scraper._should_stop,
+                    sleep=scraper._sleep_interruptibly,
+                )
+            dedup_fields, known, dedup_enabled = self._pipeline_dedup()
             if self.clean_rules:
                 self.root.after(0, lambda: self._log(f"已应用清洗规则: {len(self.clean_rules)} 个字段"))
-            if self.dedup_var.get() or self.incremental_var.get():
-                self.root.after(0, lambda: self._log(f"逐条处理完成: {raw_count} 条原始数据"))
-
-            self.result_data = processed
-            self.root.after(0, self._show_results)
-            elapsed = round(time.time() - self.start_time, 2)
-            self.root.after(0, lambda: self._update_stat(raw_count, processed_count, elapsed))
-            self.result_count = processed_count
-
-            # 自动保存到数据库
-            self.root.after(0, lambda: self._log(f"已保存到历史记录，ID: {record_id}"))
-            self.root.after(0, self._refresh_history)
+            self._run_pipeline(raw, self.url_var.get().strip(), "采集任务", task, dedup_fields, known, dedup_enabled)
         except Exception as e:
             self.root.after(0, lambda: self._log(f"错误: {e}"))
-            self.root.after(0, lambda: self.status_var.set("采集失败"))
+            self.root.after(0, self.status_var.set("采集失败"))
         finally:
             if self._active_scraper is scraper:
                 self._active_scraper = None
@@ -966,7 +1283,11 @@ class ScraperGUI:
                 scraper.close()
 
     def _update_progress(self, page: int, total: int):
-        self.progress["value"] = min(page / self.max_pages_var.get() * 100, 100)
+        if self.mode_var.get() in ("search", "social"):
+            denominator = max(1, total)
+        else:
+            denominator = max(1, self.max_pages_var.get())
+        self.progress["value"] = min(page / denominator * 100, 100)
         self.status_var.set(f"已采集 {page} 页，共 {total} 条数据")
         self._log(f"第 {page} 页完成，累计 {total} 条")
 
@@ -999,7 +1320,15 @@ class ScraperGUI:
             self.result_tree.heading(c, text=c)
             self.result_tree.column(c, width=100)
         for row in self.result_data[:100]:
-            self.result_tree.insert("", tk.END, values=[row.get(c, "") for c in cols])
+            self.result_tree.insert("", tk.END, values=[self._cell_text(row.get(c, "")) for c in cols])
+
+    @staticmethod
+    def _cell_text(value):
+        if value is None:
+            return ""
+        if isinstance(value, (list, tuple, set, dict)):
+            return json.dumps(value, ensure_ascii=False, default=str)
+        return value
 
     def _export(self):
         if not self.result_data:
@@ -1012,10 +1341,19 @@ class ScraperGUI:
         if not path:
             return
         try:
-            data = get_record(int(self.current_record_id))["data"] if getattr(self, "current_record_id", None) else self.result_data
+            rid = self.current_record_id
+            data = None
+            if rid is not None:
+                try:
+                    data = get_record(int(rid))["data"]
+                except Exception as exc:
+                    self._log(f"读取历史记录失败，改用界面数据导出: {exc}")
+                    data = None
+            if not data:
+                data = self.result_data
             export(data, path)
-            messagebox.showinfo("完成", f"已导出到: {path}")
-            self._log(f"导出成功: {path}")
+            messagebox.showinfo("完成", f"已导出 {len(data)} 条到: {path}")
+            self._log(f"导出成功: {path}（{len(data)} 条）")
         except Exception as e:
             messagebox.showerror("错误", f"导出失败: {e}")
 
@@ -1048,6 +1386,8 @@ class ScraperGUI:
                 report.add(finding)
             report.write_pdf(path)
             messagebox.showinfo("完成", f"PDF 报告已生成: {path}")
+        except ImportError:
+            messagebox.showerror("缺少依赖", "生成 PDF 需要 Playwright。\n请执行: pip install playwright && playwright install chromium\n\n可先使用「生成 HTML 报告」，再用浏览器打印为 PDF。")
         except Exception as exc:
             messagebox.showerror("错误", f"PDF 生成失败，请先安装 Playwright Chromium: {exc}")
 
@@ -1123,6 +1463,9 @@ class ScraperGUI:
             "incremental": self.incremental_var.get(),
             "incremental_id": self.incremental_id_var.get(), "incremental_url": self.incremental_url_var.get(), "incremental_time": self.incremental_time_var.get(),
             "clean_rules": self.clean_rules,
+            "search_config": self._search_config(),
+            "social_config": self._social_config(),
+            "detail_config": self._detail_config(),
             "api_config": {
                 "method": self.api_method_var.get(),
                 "body_type": self.api_body_type_var.get(),
@@ -1174,6 +1517,48 @@ class ScraperGUI:
         for field, rules in self.clean_rules.items():
             for rule in rules:
                 self.clean_tree.insert("", tk.END, values=(field, rule))
+
+        search_cfg = task.get("search_config", {})
+        if search_cfg:
+            engine = search_cfg.get("engine", "bing")
+            self.search_engine_var.set(engine if engine in SUPPORTED_ENGINES else "bing")
+            self.search_keywords_var.set(search_cfg.get("keywords", ""))
+            try:
+                self.search_max_results_var.set(int(search_cfg.get("max_results", 20)))
+            except Exception:
+                self.search_max_results_var.set(20)
+            self.search_site_var.set(search_cfg.get("site", ""))
+            self.search_lang_var.set(search_cfg.get("lang", "zh-CN") or "zh-CN")
+
+        social_cfg = task.get("social_config", {})
+        if social_cfg:
+            source = social_cfg.get("source", "rss")
+            if source not in SOURCE_LABELS:
+                source = "rss"
+            self.social_source_var.set(f"{source}|{SOURCE_LABELS[source]}")
+            self.social_target_var.set(social_cfg.get("target", ""))
+            try:
+                self.social_limit_var.set(int(social_cfg.get("limit", 20)))
+            except Exception:
+                self.social_limit_var.set(20)
+
+        detail_cfg = task.get("detail_config", {})
+        if detail_cfg:
+            self.detail_enabled_var.set(bool(detail_cfg.get("enabled", False)))
+            self.detail_url_field_var.set(detail_cfg.get("url_field", "详情链接") or "详情链接")
+            self.detail_scope_var.set(detail_cfg.get("list_selector", "body") or "body")
+            self.detail_keep_list_var.set(bool(detail_cfg.get("keep_list_fields", True)))
+            self.detail_skip_error_var.set(bool(detail_cfg.get("skip_on_error", True)))
+            try:
+                self.detail_max_items_var.set(int(detail_cfg.get("max_items", 0)))
+            except Exception:
+                self.detail_max_items_var.set(0)
+            self.detail_fields = detail_cfg.get("fields", []) or []
+            self.detail_field_tree.delete(*self.detail_field_tree.get_children())
+            for f in self.detail_fields:
+                self.detail_field_tree.insert("", tk.END, values=(
+                    f["name"], f.get("selector", ""), f.get("attr", "") or ""
+                ))
 
         api_cfg = task.get("api_config", {})
         self.api_method_var.set(api_cfg.get("method", "GET"))
@@ -1287,13 +1672,72 @@ class ScraperGUI:
         if self.scheduler.add_job(job_id, task, interval, callback):
             self._refresh_schedules()
 
+    def _checkpoint_path(self, name: str) -> str:
+        base = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "InfoScraper", "checkpoints")
+        os.makedirs(base, exist_ok=True)
+        return os.path.join(base, (name or "current") + ".json")
+
+    def _task_raw_rows(self, scraper, task: dict):
+        """按任务模式分发取数：search/social 走新模块，其余走 WebScraper 列表采集。"""
+        mode = task.get("mode", "static")
+        if mode in ("search", "social"):
+            if mode == "search":
+                cfg = normalize_search_config(task.get("search_config") or {})
+                return collect_search_results(
+                    cfg,
+                    fetch=scraper._fetch,
+                    on_log=lambda msg: self.root.after(0, lambda: self._log(f"[定时] {msg}")),
+                    should_stop=scraper._should_stop,
+                    sleep=scraper._sleep_interruptibly,
+                )
+            cfg = normalize_social_config(task.get("social_config") or {})
+            return fetch_social_rows(
+                cfg,
+                fetch=scraper._fetch,
+                fetch_json=lambda url, referer="": self._fetch_json_with_referer(scraper, url, referer),
+            )
+        raw_rows = scraper.iter_run(
+            list_selector=task["list_selector"],
+            fields=task["fields"],
+            selector_type=task.get("selector_type", "css"),
+            max_pages=task.get("max_pages", 1),
+            next_page_selector=task.get("page_selector") if task.get("page_mode") == "url" else None,
+            next_page_mode="param" if task.get("page_mode") == "param" else "url",
+            next_page_param=task.get("page_selector") or "page",
+            next_page_step=task.get("page_step", 1),
+            on_progress=lambda p, total: self.root.after(0, lambda: self._log(f"定时任务 第{p}页 累计{total}条")),
+            on_log=lambda msg: self.root.after(0, lambda: self._log(f"[定时] {msg}")),
+        )
+        detail_cfg = task.get("detail_config") or {}
+        if detail_cfg.get("enabled") or mode == "detail":
+            normalized = normalize_detail_config(detail_cfg)
+            raw_rows = attach_details(
+                raw_rows,
+                fetch=scraper._fetch,
+                config=normalized,
+                base_url=task.get("url", ""),
+                on_log=lambda msg: self.root.after(0, lambda: self._log(f"[定时] {msg}")),
+                should_stop=scraper._should_stop,
+                sleep=scraper._sleep_interruptibly,
+            )
+        return raw_rows
+
     def _run_scheduled_task(self, task: dict):
         scraper = None
         try:
+            name = task.get("task_name", "定时任务")
+            mode = task.get("mode", "static")
+            source_url = task.get("url") or ""
+            if not source_url and mode == "search":
+                cfg = task.get("search_config") or {}
+                source_url = f"search:{cfg.get('engine', 'bing')}:{cfg.get('keywords', '')}"
+            elif not source_url and mode == "social":
+                cfg = task.get("social_config") or {}
+                source_url = f"social:{cfg.get('source', 'rss')}:{cfg.get('target', '')}"
             proxies = [p["address"] for p in list_proxies() if p["enabled"]]
             scraper = WebScraper(
-                start_url=task["url"],
-                mode=task.get("mode", "static"),
+                start_url=task.get("url") or "about:blank",
+                mode=mode if mode in ("static", "api") else "static",
                 headers={"User-Agent": task.get("ua")} if task.get("ua") else {},
                 cookies=task.get("cookie") or None,
                 delay=task.get("delay", 0.5),
@@ -1304,25 +1748,23 @@ class ScraperGUI:
                 render=task.get("render", False),
                 render_wait_until=task.get("render_wait_until", "domcontentloaded"),
                 api_config=task.get("api_config"),
+                checkpoint_path=self._checkpoint_path(name),
                 respect_robots=task.get("respect_robots", True),
                 robots_fail_closed=task.get("robots_fail_closed", False),
                 trusted_hosts=task.get("trusted_hosts", []),
             )
-            raw_rows = scraper.iter_run(
-                list_selector=task["list_selector"],
-                fields=task["fields"],
-                selector_type=task.get("selector_type", "css"),
-                max_pages=task.get("max_pages", 1),
-                next_page_selector=task.get("page_selector") if task.get("page_mode") == "url" else None,
-                next_page_mode="param" if task.get("page_mode") == "param" else "url",
-                next_page_param=task.get("page_selector") or "page",
-                next_page_step=task.get("page_step", 1),
-                on_progress=lambda p, total: self.root.after(0, lambda: self._log(f"定时任务 第{p}页 累计{total}条")),
-                on_log=lambda msg: self.root.after(0, lambda: self._log(f"[定时] {msg}")),
-            )
-            dedup_fields = [f.strip() for f in task.get("dedup_fields", "").split(",") if f.strip()] if task.get("dedup") else None
-            data = process_rows(raw_rows, task.get("clean_rules") or {}, dedup_fields, dedup=bool(task.get("dedup")))
-            record_id = save_record_stream(task.get("task_name", "定时任务"), task["url"], data)
+            raw_rows = self._task_raw_rows(scraper, task)
+            incremental = bool(task.get("incremental"))
+            dedup_fields = [f.strip() for f in task.get("dedup_fields", "").split(",") if f.strip()] if (task.get("dedup") or incremental) else None
+            if incremental:
+                for key in ("incremental_id", "incremental_url", "incremental_time"):
+                    value = (task.get(key) or "").strip()
+                    if value and value not in (dedup_fields or []):
+                        dedup_fields = (dedup_fields or []) + [value]
+            known = existing_keys(name, dedup_fields) if incremental and dedup_fields else set()
+            data = process_rows(raw_rows, task.get("clean_rules") or {}, dedup_fields, known,
+                                dedup=bool(dedup_fields))
+            record_id = save_record_stream(name, source_url, data)
             self.root.after(0, lambda: self._log(f"定时任务完成，保存记录 ID: {record_id}"))
             self.root.after(0, self._refresh_history)
         except Exception as e:

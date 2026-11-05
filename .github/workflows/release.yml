@@ -6,7 +6,7 @@ permissions:
   contents: write
 jobs:
   release:
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

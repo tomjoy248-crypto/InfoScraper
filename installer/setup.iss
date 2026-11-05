@@ -1,5 +1,5 @@
 #define MyAppName "InfoScraper"
-#define MyAppVersion "1.9.2"
+#define MyAppVersion "4.16.0"
 #define MyAppPublisher "InfoScraper Team"
 #define MyAppURL "https://github.com/tomjoy248-crypto/InfoScraper"
 #define MyAppExeName "InfoScraper.exe"

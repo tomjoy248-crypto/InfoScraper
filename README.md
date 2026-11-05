@@ -47,7 +47,7 @@ search / social / detail 均复用主爬虫的代理池、重试、随机延迟�
 
 不需要安装 Python，下载安装包后双击运行即可：
 
-- [InfoScraper-Setup.exe 下载](https://github.com/tomjoy248-crypto/SL-crawler-/releases/download/v1.1.0/InfoScraper-Setup.exe)
+- [InfoScraper-Setup.exe 下载](https://github.com/tomjoy248-crypto/InfoScraper/releases/download/v1.1.0/InfoScraper-Setup.exe)
 
 下载后双击安装，安装完成后会在开始菜单和桌面（可选）创建快捷方式。
 
@@ -56,7 +56,7 @@ search / social / detail 均复用主爬虫的代理池、重试、随机延迟�
 ### 安装依赖
 
 ```bash
-cd SL-crawler-
+cd InfoScraper
 pip install -r requirements.txt
 ```
 
@@ -99,7 +99,7 @@ python main.py
 ## 项目结构
 
 ```
-SL-crawler-/
+InfoScraper/
 ├── main.py           # 程序入口
 ├── gui.py            # 桌面界面（含标签页）
 ├── scraper.py        # 爬虫核心（反爬、翻页、渲染）

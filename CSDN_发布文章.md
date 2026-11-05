@@ -2,7 +2,7 @@
 
 > GitHub 项目地址：[https://github.com/tomjoy248-crypto/InfoScraper](https://github.com/tomjoy248-crypto/InfoScraper)
 >
-> 最新 Windows 安装包：[Releases 下载页](https://github.com/tomjoy248-crypto/SL-crawler-/releases/latest)
+> 最新 Windows 安装包：[Releases 下载页](https://github.com/tomjoy248-crypto/InfoScraper/releases/latest)
 
 ## 项目介绍
 
@@ -100,6 +100,6 @@ InfoScraper 是一个 Windows 桌面端信息收集与网页资产分析工具�
 ## 获取项目
 
 - GitHub：<https://github.com/tomjoy248-crypto/InfoScraper>
-- Releases：<https://github.com/tomjoy248-crypto/SL-crawler-/releases/latest>
+- Releases：<https://github.com/tomjoy248-crypto/InfoScraper/releases/latest>
 
 欢迎提交 Issue 和改进建议。使用前请确认目标授权范围。

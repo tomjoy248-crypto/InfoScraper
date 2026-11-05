@@ -7,7 +7,7 @@
 
 ### 方式 2：源码运行
 ```bash
-cd info_scraper
+cd InfoScraper
 pip install -r requirements.txt
 python main.py
 ```

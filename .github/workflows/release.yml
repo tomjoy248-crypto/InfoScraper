@@ -8,8 +8,8 @@ jobs:
   release:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with: {python-version: '3.11'}
       - name: Sync installer version from tag
         shell: pwsh
@@ -49,7 +49,7 @@ jobs:
           foreach ($f in @('dist\\InfoScraper.exe','setup_output\\InfoScraper-Setup.zip','setup_output\\InfoScraper-Setup.exe','setup_output\\SHA256SUMS.txt')) { if (!(Test-Path $f)) { throw "Missing release file: $f" } }
           $lines = Get-Content setup_output\\SHA256SUMS.txt
           foreach ($name in @('InfoScraper.exe','InfoScraper-Setup.zip','InfoScraper-Setup.exe')) { if (-not ($lines -match [regex]::Escape($name))) { throw "Missing checksum for $name" } }
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/InfoScraper.exe

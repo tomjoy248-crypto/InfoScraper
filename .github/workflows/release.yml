@@ -15,8 +15,10 @@ jobs:
         shell: pwsh
         run: |
           $version = $env:GITHUB_REF_NAME.TrimStart('v')
-          (Get-Content installer\setup.iss -Raw) -replace '#define MyAppVersion "[^"]+"', "#define MyAppVersion `"$version`"" | Set-Content installer\setup.iss -Encoding utf8
-          "__version__ = `"$version`"" | Set-Content version.py -Encoding ascii
+          # 用 -NoNewline 并显式补 CRLF，保证与仓库现有格式逐字节一致，
+          # 否则同版本重写也会产生假差异，导致每次发布都多出一个空提交。
+          ((Get-Content installer\setup.iss -Raw) -replace '#define MyAppVersion "[^"]+"', "#define MyAppVersion `"$version`"") | Set-Content installer\setup.iss -Encoding utf8 -NoNewline
+          ("__version__ = `"$version`"" + "`r`n") | Set-Content version.py -Encoding ascii -NoNewline
       - run: pip install -r requirements.txt pyinstaller
       - run: pyinstaller --noconfirm --clean --onefile --windowed --name InfoScraper main.py
       - run: copy dist\InfoScraper.exe installer\files\InfoScraper.exe
@@ -66,3 +68,22 @@ jobs:
           foreach ($name in @('InfoScraper.exe','InfoScraper-Setup.zip','InfoScraper-Setup.exe','SHA256SUMS.txt')) {
             if ($names -notcontains $name) { throw "Published asset missing: $name" }
           }
+      - name: Persist version to repository
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          # 上方步骤只在运行器内改写 version.py / setup.iss，
+          # 这里把结果提交回仓库，避免源码版本号长期落后于已发布 tag。
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if (-not (git status --porcelain -- version.py installer/setup.iss)) {
+            Write-Output 'Version already in sync, nothing to commit.'
+            exit 0
+          }
+          if ((git rev-parse --abbrev-ref HEAD) -ne 'main') {
+            git fetch origin main --depth=1
+            git checkout -B main FETCH_HEAD
+          }
+          git add version.py installer/setup.iss
+          git commit -m "chore: 版本号同步为 $env:GITHUB_REF_NAME [skip ci]"
+          git push origin main

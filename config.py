@@ -11,6 +11,9 @@ CONFIG_VERSION = 1
 
 DEFAULT_CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tasks")
 SENSITIVE_KEYS = ("cookie", "proxy", "proxy_single")
+# api_config 中的这两个子树可能携带 Authorization / X-API-Key / token 等凭证，
+# 整体按敏感数据处理，避免明文写入任务 JSON（M-2 修复）
+API_SENSITIVE_SUBKEYS = ("headers", "body")
 
 # 任务名允许使用的字符：字母、数字、中文、下划线、中划线、点、空格
 # 其他字符会替换为下划线；路径分隔符和 .. 明确禁止
@@ -62,7 +65,21 @@ def save_task(name: str, task: Dict[str, Any]):
         to_save["cookie"] = ""
     def protect(value, sensitive=False):
         if isinstance(value, dict):
-            return {k: protect(v, sensitive=(k in SENSITIVE_KEYS or k == "proxy_pool")) for k, v in value.items()}
+            protected = {}
+            for key, item in value.items():
+                if key == "api_config" and isinstance(item, dict):
+                    # M-2 修复：api_config 的 headers/body 可能包含 API 凭证，
+                    # 必须加密存储；其余分页配置不含敏感信息，保持明文
+                    protected[key] = {
+                        sub: protect(subval, sensitive=(sub in API_SENSITIVE_SUBKEYS))
+                        for sub, subval in item.items()
+                    }
+                else:
+                    protected[key] = protect(
+                        item,
+                        sensitive=(sensitive or key in SENSITIVE_KEYS or key == "proxy_pool"),
+                    )
+            return protected
         if isinstance(value, list):
             return [secure_storage.encrypt(v) if sensitive and isinstance(v, str) else protect(v, sensitive) for v in value]
         return secure_storage.encrypt(value) if sensitive and isinstance(value, str) else value
@@ -81,6 +98,15 @@ def save_task(name: str, task: Dict[str, Any]):
             os.remove(temp_path)
 
 
+def _decrypt_tree(value):
+    """递归解密 headers/body 子树；非 token 字符串原样返回（兼容旧明文任务）。"""
+    if isinstance(value, dict):
+        return {k: _decrypt_tree(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_decrypt_tree(v) for v in value]
+    return secure_storage.decrypt(value) if isinstance(value, str) else value
+
+
 def load_task(name: str) -> Dict[str, Any]:
     path = _task_path(name)
     with open(path, "r", encoding="utf-8") as f:
@@ -96,6 +122,15 @@ def load_task(name: str) -> Dict[str, Any]:
             task["proxy_pool"] = [secure_storage.decrypt(value) if isinstance(value, str) else value for value in task["proxy_pool"]]
         except Exception as exc:
             raise ConfigError("敏感数据解密失败，请在当前 Windows 用户下重新输入") from exc
+    # M-2 修复：解密 api_config.headers/body 中加密的凭证
+    api_cfg = task.get("api_config")
+    if isinstance(api_cfg, dict):
+        for key in API_SENSITIVE_SUBKEYS:
+            if isinstance(api_cfg.get(key), (dict, list)):
+                try:
+                    api_cfg[key] = _decrypt_tree(api_cfg[key])
+                except Exception as exc:
+                    raise ConfigError("敏感数据解密失败，请在当前 Windows 用户下重新输入") from exc
     task.setdefault("config_version", 1)
     return task
 

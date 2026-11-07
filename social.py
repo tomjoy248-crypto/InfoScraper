@@ -18,6 +18,8 @@ import json
 import re
 import urllib.parse
 import urllib.request
+
+from url_guard import UnsafeURLError, validate_url
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional
 
 from bs4 import BeautifulSoup
@@ -348,16 +350,25 @@ def fetch_social_rows(config: Dict[str, Any], fetch=None, fetch_json=None) -> Li
     if source == "mastodon":
         if "/@" in target:
             base, _, account = target.replace("https://", "").replace("http://", "").partition("/")
-            payload = get_json(
-                f"https://{base}/api/v1/accounts/lookup?acct={urllib.parse.quote(account.lstrip('@'))}"
-            )
+            lookup_url = f"https://{base}/api/v1/accounts/lookup?acct={urllib.parse.quote(account.lstrip('@'))}"
+            # 实例域名由用户输入，必须校验，防止指向内网地址（SSRF）。
+            try:
+                validate_url(lookup_url)
+            except UnsafeURLError:
+                raise SocialError("Mastodon 实例地址指向受保护网络，已阻止")
+            payload = get_json(lookup_url)
             if not payload.get("id"):
                 raise SocialError("Mastodon 账号不存在或未公开")
             payload = get_json(
                 f"https://{base}/api/v1/accounts/{payload['id']}/statuses?limit={min(limit, 40)}&exclude_replies=true"
             )
             return parse_mastodon_statuses(payload, limit)
-        payload = get_json(f"{target.rstrip('/')}/api/v1/timelines/public?limit={min(limit, 40)}")
+        public_url = f"{target.rstrip('/')}/api/v1/timelines/public?limit={min(limit, 40)}"
+        try:
+            validate_url(public_url)
+        except UnsafeURLError:
+            raise SocialError("Mastodon 实例地址指向受保护网络，已阻止")
+        payload = get_json(public_url)
         return parse_mastodon_statuses(payload, limit)
     if source == "reddit":
         path = target

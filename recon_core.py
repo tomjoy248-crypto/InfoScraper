@@ -12,6 +12,7 @@ import re
 import time
 import ipaddress
 import xml.etree.ElementTree as ET
+from url_guard import UnsafeURLError, validate_url
 from dataclasses import asdict, dataclass
 from typing import Iterable, List
 
@@ -186,6 +187,14 @@ def enrich_network(asset: Asset, timeout: int = 8) -> Asset:
 
 def probe_http(asset: Asset, timeout: int = 8, delay: float = 0.2) -> Asset:
     """Perform a single low-impact HTTP request and record basic metadata."""
+    # 先校验目标地址，防止解析到内网/回环/保留地址（SSRF）。
+    # 失败时不抛异常，避免单个资产阻断整条资产采集流水线。
+    try:
+        validate_url(f"https://{asset.value}/")
+    except UnsafeURLError:
+        asset.status = "blocked: internal/protected address"
+        asset.fingerprint = ""
+        return asset
     for scheme in ("https", "http"):
         url = f"{scheme}://{asset.value}/"
         request = urllib.request.Request(url, headers={"User-Agent": "InfoScraper/4.0"}, method="GET")

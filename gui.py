@@ -1396,7 +1396,11 @@ class ScraperGUI:
         if not name:
             messagebox.showwarning("提示", "请输入任务名")
             return
-        task = self._collect_task_config()
+        try:
+            task = self._collect_task_config()
+        except ValueError as exc:
+            messagebox.showerror("API 配置错误", str(exc))
+            return
         try:
             save_task(name, task)
         except Exception as exc:
@@ -1427,14 +1431,14 @@ class ScraperGUI:
             h = self.api_headers_var.get().strip()
             if h:
                 api_headers = json.loads(h)
-        except Exception:
-            self._log("API 额外请求头不是合法 JSON，已忽略")
+        except Exception as exc:
+            raise ValueError(f"API 额外请求头不是合法 JSON 对象:\n{exc}\n\n请检查输入内容，例如：{{\"Authorization\": \"Bearer xxx\"}}")
         try:
             b = self.api_body_var.get().strip()
             if b:
                 api_body = json.loads(b)
-        except Exception:
-            self._log("API 请求体不是合法 JSON，已忽略")
+        except Exception as exc:
+            raise ValueError(f"API 请求体不是合法 JSON:\n{exc}")
 
         return {
             "url": self.url_var.get(),
@@ -1663,7 +1667,11 @@ class ScraperGUI:
     def _add_schedule(self):
         name = self.task_name_var.get().strip() or "未命名"
         interval = self.schedule_interval_var.get()
-        task = self._collect_task_config()
+        try:
+            task = self._collect_task_config()
+        except ValueError as exc:
+            messagebox.showerror("API 配置错误", str(exc))
+            return
         task["task_name"] = name
         job_id = f"{name}_{uuid.uuid4().hex[:8]}"
 

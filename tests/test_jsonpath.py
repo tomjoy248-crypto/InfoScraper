@@ -33,6 +33,55 @@ class TestJSONPath(unittest.TestCase):
         data = {"name": "Alice"}
         self.assertEqual(query(data, "age"), [])
 
+    def test_recursive_descent(self):
+        data = {
+            "a": {"name": "x"},
+            "b": {"c": {"name": "y"}},
+            "d": [{"name": "z"}],
+        }
+        self.assertEqual(query(data, "$..name"), ["x", "y", "z"])
+        self.assertEqual(query(data, "..name"), ["x", "y", "z"])
+
+    def test_filter_equal(self):
+        data = {"items": [
+            {"name": "a", "age": 30},
+            {"name": "b", "age": 20},
+        ]}
+        result = query(data, "items[?(@.name == 'a')].age")
+        self.assertEqual(result, [30])
+
+    def test_filter_not_equal(self):
+        data = {"items": [
+            {"name": "a", "age": 30},
+            {"name": "b", "age": 20},
+        ]}
+        result = query(data, "items[?(@.name != 'a')].age")
+        self.assertEqual(result, [20])
+
+    def test_filter_numeric_compare(self):
+        data = {"items": [
+            {"name": "a", "age": 30},
+            {"name": "b", "age": 20},
+            {"name": "c", "age": 25},
+        ]}
+        self.assertEqual(query(data, "items[?(@.age > 25)].name"), ["a"])
+        self.assertEqual(query(data, "items[?(@.age >= 25)].name"), ["a", "c"])
+        self.assertEqual(query(data, "items[?(@.age < 25)].name"), ["b"])
+        self.assertEqual(query(data, "items[?(@.age <= 25)].name"), ["b", "c"])
+
+    def test_filter_boolean(self):
+        data = {"items": [
+            {"name": "a", "active": True},
+            {"name": "b", "active": False},
+        ]}
+        result = query(data, "items[?(@.active == true)].name")
+        self.assertEqual(result, ["a"])
+
+    def test_bracket_key_access(self):
+        data = {"data-list": [{"中文名": "甲"}]}
+        self.assertEqual(query(data, "$.data-list[*].中文名"), ["甲"])
+        self.assertEqual(query(data, "$['data-list'][0]['中文名']"), ["甲"])
+
 
 if __name__ == "__main__":
     unittest.main()

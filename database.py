@@ -79,7 +79,8 @@ def init_db(drop_legacy: bool = False):
         pass
     # Encrypt legacy plaintext proxy addresses in place once.
     for proxy_id, stored in conn.execute("SELECT id, address FROM proxies").fetchall():
-        if stored and not str(stored).startswith(("dpapi:", "b64:")):
+        # 所有加密 token 前缀都要识别，否则会把已加密数据再次加密导致无法解密
+        if stored and not str(stored).startswith(("dpapi:", "b64:", "fernet:")):
             conn.execute("UPDATE proxies SET address=? WHERE id=?", (secure_storage.encrypt(stored), proxy_id))
     conn.commit()
     conn.close()

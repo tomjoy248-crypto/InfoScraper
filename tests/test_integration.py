@@ -28,6 +28,25 @@ def test_proxy_auto_cooldown(tmp_path, monkeypatch):
     assert database.list_proxies()[0]["enabled"] is False
 
 
+def test_proxy_round_trip_with_fernet_tokens(tmp_path, monkeypatch):
+    # L-1 回归：非 Windows 平台 fernet token 不能被 init_db 迁移逻辑反复再加密，
+    # 否则地址查找/去重/失败标记全部失效
+    import database
+    import secure_storage
+    monkeypatch.setattr(database, "DB_PATH", str(tmp_path / "proxy.db"))
+    monkeypatch.setattr(secure_storage, "_KEY_PATH", str(tmp_path / "key"))
+    monkeypatch.setattr(secure_storage, "_FERNET", None)
+    monkeypatch.setattr(secure_storage, "_IS_WINDOWS", False)
+    database.add_proxy("http://127.0.0.1:9")
+    database.add_proxy("http://127.0.0.1:9")  # 重复添加应去重
+    assert [p["address"] for p in database.list_proxies()] == ["http://127.0.0.1:9"]
+    for _ in range(3):
+        database.mark_proxy_fail("http://127.0.0.1:9")
+    assert database.list_proxies()[0]["enabled"] is False
+    database.delete_proxy("http://127.0.0.1:9")
+    assert database.list_proxies() == []
+
+
 def test_proxy_health_failure_is_safe():
     from database import check_proxy
     with patch("requests.get", side_effect=OSError("offline")):

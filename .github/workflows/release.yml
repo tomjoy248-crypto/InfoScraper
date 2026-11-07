@@ -2,6 +2,7 @@ name: Release Windows installer
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:
@@ -85,5 +86,7 @@ jobs:
             git checkout -B main FETCH_HEAD
           }
           git add version.py installer/setup.iss
-          git commit -m "chore: 版本号同步为 $env:GITHUB_REF_NAME [skip ci]"
+          # 故意不加 [skip ci]：若 tag 指向含 [skip ci] 的提交，GitHub 会
+          # 跳过该 tag push 触发的本工作流，导致发布静默失败。
+          git commit -m "chore: 版本号同步为 $env:GITHUB_REF_NAME"
           git push origin main

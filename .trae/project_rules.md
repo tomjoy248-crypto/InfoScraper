@@ -19,7 +19,7 @@ python main.py                           # 本地启动 GUI
 - `version.py` 中的 `__version__`
 - `installer/setup.iss` 中的 `#define MyAppVersion`
 
-发布时 `release.yml` 会按 tag 自动改写这两处并在发布成功后提交回 `main`（提交信息带 `[skip ci]`）。
+发布时 `release.yml` 会按 tag 自动改写这两处并在发布成功后提交回 `main`（提交信息**不带** `[skip ci]`，因为若 tag 指向含 `[skip ci]` 的提交，GitHub 会跳过该 tag 触发的发布工作流）。
 因此**不要手工改版本号**，只要打对 tag 即可。
 
 改写脚本必须保留 `-NoNewline` 并显式补 CRLF，两个文件都以 CRLF 结尾；否则同版本重写也会产生假差异，导致每次发布多出一个空提交。

@@ -1,18 +1,49 @@
 """敏感数据安全存储。
 
 Windows 下使用 DPAPI（Data Protection API）加密当前用户可解密的数据；
-其他平台由于没有统一的系统级密钥保护机制，回退到 base64 编码（不加密），
-并给出警告。
+其他平台使用 cryptography 的 Fernet 对称加密，密钥保存在用户主目录下
+权限 0600 的密钥文件中（L-1 修复：不再使用 base64 明文编码）。
+仅在 cryptography 不可用时才降级为 base64 编码并给出警告。
 """
 
 import base64
 import logging
+import os
 import sys
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 _IS_WINDOWS = sys.platform.startswith("win")
+
+# 非 Windows 平台的密钥文件（0600 权限，仅当前用户可读）
+_KEY_PATH = os.path.join(os.path.expanduser("~"), ".info_scraper.key")
+_FERNET = None
+
+
+def _load_fernet():
+    """惰性加载/创建 Fernet 实例；密钥不存在时生成并落盘（0600）。"""
+    global _FERNET
+    if _FERNET is not None:
+        return _FERNET
+    from cryptography.fernet import Fernet
+
+    try:
+        with open(_KEY_PATH, "rb") as f:
+            key = f.read().strip()
+        if key:
+            _FERNET = Fernet(key)
+            return _FERNET
+    except OSError:
+        pass
+    key = Fernet.generate_key()
+    # O_CREAT|O_TRUNC + 0600，避免密钥文件被其他用户读取
+    fd = os.open(_KEY_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        f.write(key)
+    os.chmod(_KEY_PATH, 0o600)
+    _FERNET = Fernet(key)
+    return _FERNET
 
 
 def encrypt(value: Optional[str]) -> Optional[str]:
@@ -21,8 +52,13 @@ def encrypt(value: Optional[str]) -> Optional[str]:
         return value
     raw = value.encode("utf-8")
     if not _IS_WINDOWS:
-        logger.warning("非 Windows 平台，敏感数据仅做 base64 编码，未加密")
-        return "b64:" + base64.b64encode(raw).decode("ascii")
+        # L-1 修复：非 Windows 平台使用 Fernet 真加密；
+        # 仅在 cryptography 不可用时降级为 base64 并警告
+        try:
+            return "fernet:" + _load_fernet().encrypt(raw).decode("ascii")
+        except ImportError:
+            logger.warning("cryptography 未安装，敏感数据仅做 base64 编码，未加密")
+            return "b64:" + base64.b64encode(raw).decode("ascii")
 
     import ctypes
     from ctypes import wintypes
@@ -66,6 +102,15 @@ def decrypt(token: Optional[str]) -> Optional[str]:
     """解密 token；输入为空或不是加密 token 则原样返回。"""
     if not token:
         return token
+    if token.startswith("fernet:"):
+        # L-1 修复：Fernet 加密 token（非 Windows 平台）
+        try:
+            plain = _load_fernet().decrypt(token[7:].encode("ascii"))
+        except ImportError as exc:
+            raise OSError("无法解密：cryptography 未安装") from exc
+        except Exception as exc:
+            raise OSError("Fernet 解密失败：密钥文件可能已变更或数据损坏") from exc
+        return plain.decode("utf-8")
     if token.startswith("dpapi:"):
         if not _IS_WINDOWS:
             raise OSError("无法解密 DPAPI 数据：当前不是 Windows 平台")

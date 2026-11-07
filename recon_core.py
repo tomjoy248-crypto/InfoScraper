@@ -185,6 +185,26 @@ def enrich_network(asset: Asset, timeout: int = 8) -> Asset:
     return asset
 
 
+class _ValidatingRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """重定向 SSRF 防护：跳转目标也必须通过 url_guard 校验。
+
+    公网站点可能 30x 跳转到内网/回环/保留地址（重定向型 SSRF），
+    这里在每次跟随前校验 Location，解析到受保护地址时返回 None，
+    urlopen 会抛出原始 30x HTTPError，由调用方记录而不发起请求。
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        try:
+            validate_url(newurl)
+        except UnsafeURLError:
+            return None
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+# probe_http 专用 opener：跟随重定向前先校验目标地址
+_SAFE_OPENER = urllib.request.build_opener(_ValidatingRedirectHandler)
+
+
 def probe_http(asset: Asset, timeout: int = 8, delay: float = 0.2) -> Asset:
     """Perform a single low-impact HTTP request and record basic metadata."""
     # 先校验目标地址，防止解析到内网/回环/保留地址（SSRF）。
@@ -199,7 +219,7 @@ def probe_http(asset: Asset, timeout: int = 8, delay: float = 0.2) -> Asset:
         url = f"{scheme}://{asset.value}/"
         request = urllib.request.Request(url, headers={"User-Agent": "InfoScraper/4.0"}, method="GET")
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with _SAFE_OPENER.open(request, timeout=timeout) as response:
                 body = response.read(256 * 1024).decode("utf-8", errors="replace")
                 asset.final_url = response.geturl()
                 title = re.search(r"<title[^>]*>(.*?)</title>", body, re.I | re.S)
@@ -243,7 +263,11 @@ def probe_http(asset: Asset, timeout: int = 8, delay: float = 0.2) -> Asset:
         except urllib.error.HTTPError as exc:
             # An HTTP response proves the host is reachable even when access
             # is denied or the path is missing. Preserve that evidence.
-            asset.status = str(exc.code)
+            if exc.code in {301, 302, 303, 307, 308}:
+                # 30x 走到这里说明重定向被 SSRF 防护拦截或超出跳转次数上限
+                asset.status = f"{exc.code} redirect blocked"
+            else:
+                asset.status = str(exc.code)
             asset.final_url = getattr(exc, "url", url) or url
             asset.fingerprint = "access denied" if exc.code in {401, 403, 429} else ""
             if delay > 0:

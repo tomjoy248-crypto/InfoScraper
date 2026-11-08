@@ -12,7 +12,12 @@ import re
 import time
 import ipaddress
 import xml.etree.ElementTree as ET
-from url_guard import UnsafeURLError, validate_url
+from url_guard import (
+    UnsafeURLError,
+    ValidatingRedirectHandler,
+    build_pinned_opener,
+    validate_url,
+)
 from dataclasses import asdict, dataclass
 from typing import Iterable, List
 
@@ -185,24 +190,11 @@ def enrich_network(asset: Asset, timeout: int = 8) -> Asset:
     return asset
 
 
-class _ValidatingRedirectHandler(urllib.request.HTTPRedirectHandler):
-    """重定向 SSRF 防护：跳转目标也必须通过 url_guard 校验。
+# 重定向 SSRF 防护类已上移 url_guard（供 build_pinned_opener 复用），保留别名兼容旧引用
+_ValidatingRedirectHandler = ValidatingRedirectHandler
 
-    公网站点可能 30x 跳转到内网/回环/保留地址（重定向型 SSRF），
-    这里在每次跟随前校验 Location，解析到受保护地址时返回 None，
-    urlopen 会抛出原始 30x HTTPError，由调用方记录而不发起请求。
-    """
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        try:
-            validate_url(newurl)
-        except UnsafeURLError:
-            return None
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-
-# probe_http 专用 opener：跟随重定向前先校验目标地址
-_SAFE_OPENER = urllib.request.build_opener(_ValidatingRedirectHandler)
+# probe_http 专用 opener：跟随重定向前校验 Location，且建连锁定已校验 IP（防 DNS rebinding）
+_SAFE_OPENER = build_pinned_opener()
 
 
 def probe_http(asset: Asset, timeout: int = 8, delay: float = 0.2) -> Asset:

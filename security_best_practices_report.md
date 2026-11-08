@@ -8,7 +8,7 @@
 > - M-2：v4.17.2（api_config.headers/body 整体 DPAPI 加密）
 > - M-3：v4.17.1（Mastodon 请求前校验实例地址）
 > - L-1：v4.17.2（非 Windows 改用 Fernet 加密，密钥 0600 文件）
-> 已知残余：`url_guard` 校验 DNS 与实际连接存在理论 TOCTOU（DNS rebinding）窗口，风险较低，暂不处理。
+> 已知残余：无。DNS rebinding TOCTOU 已于 main 分支修复（`url_guard.safe_ips` + `Pinned*Connection` 锁定校验 IP 建连，TLS SNI 仍用原主机名）。
 
 ## 执行摘要
 
@@ -135,4 +135,4 @@ if not _IS_WINDOWS:
 2. ~~**M-2**（API 凭证加密）~~：已完成。
 3. ~~**L-1**（跨平台加密）~~：已完成。
 
-后续可选跟进：`url_guard` 的 DNS rebinding TOCTOU（需锁定解析 IP 建连）。
+后续可选跟进：~~`url_guard` 的 DNS rebinding TOCTOU~~（已完成：锁定校验 IP 建连，见 `url_guard.PinnedHTTPConnection`）。
